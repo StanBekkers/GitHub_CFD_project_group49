@@ -1,0 +1,29 @@
+# MATLAB autosave
+*.asv
+
+# MATLAB workspace (optional - remove if you need them)
+*.mat
+
+# Simulink files
+*.slxc
+*.slx.r*
+slprj/
+
+# Compiled files
+*.p
+
+# Temporary files
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE/editor
+.vscode/
+.idea/
+
+# Output folders
+results/
+data/
+``
