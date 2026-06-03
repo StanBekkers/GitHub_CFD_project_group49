@@ -2,25 +2,21 @@ function [] = bound()
 % Purpose: Specify boundary conditions for a calculation
 
 % constants
-global NPI NPJ U_IN YMAX Cmu Ti
+global NPI NPJ U_IN
 % variables
-global y u v T m_in m_out y_v F_u k eps
+global  u v T m_in m_out y_v F_u
 
-% Set velocity at the inlet
-for J = 1:NPJ+2
-    %       u(2,1:NPJ+2) = U_IN; % inlet
-    u(2,J) = U_IN*1.5*(1.-(2.*(y(J)-YMAX/2.)/YMAX)^2); % inlet
-end
+% Fixed temperature in Kelvin at the upper and lower wall
+T(1:NPI+2,1:ceil((NPJ+1)/6)-1)     = 373.; % lower wall
+T(1:NPI+2,ceil(5*(NPJ+1)/6+1):NPJ+2) = 373.; % upper wall
 
-% Set k and eps at the inlet
-k(1,1:NPJ+2)     = 1.5*(U_IN*Ti)^2; % at inlet
-eps(1,1:NPJ+2)   = Cmu^0.75 *k(1,1:NPJ+2).^1.5/(0.07*YMAX*0.5); % at inlet
+% Fixed temperature in Kelvin of the incoming fluid
+T(1,ceil((NPJ+1)/6):ceil(5*(NPJ+1)/6)) = 273.; 
 
-% Fix temperature at the walls in Kelvin
-T(1:NPI+2,1) = 273.; % bottom wall
-T(1:NPI+2,NPJ+2) = 273.; % top wall
+% Setting the velocity at inlet
+u(2,ceil((NPJ+1)/6):ceil(5*(NPJ+1)/6)) = U_IN;
 
-% begin: globcont();=======================================================
+% begin: globcont(): Velocity and temperature gradient at outlet = zero:
 % Purpose: Calculate mass in and out of the calculation domain to correct for the continuity at outlet.
 convect();
 
@@ -33,13 +29,11 @@ for J = 2:NPJ+1
     m_in  = m_in  + F_u(2,J)*AREAw;
     m_out = m_out + F_u(NPI+1,J)*AREAw;
 end
-% end: globcont()==========================================================
+% end: globcont():
 
-% Velocity and temperature gradient at outlet = zero:
-% Correction factor m_in/m_out is used to satisfy global continuity
+% corection varibles: Correction factor m_in/m_out is used to satisfy global continuity
 u(NPI+2,2:NPJ+1) = u(NPI+1,2:NPJ+1)*m_in/m_out;
 v(NPI+2,2:NPJ+1) = v(NPI+1,2:NPJ+1);
-k(NPI+2,2:NPJ+1) = k(NPI+1,2:NPJ+1);
-eps(NPI+2,2:NPJ+1) = eps(NPI+1,2:NPJ+1);
-T(NPI+2,1:NPJ+2) = T(NPI+1,1:NPJ+2);
+T(NPI+2,2:NPJ+1) = T(NPI+1,2:NPJ+1);
 end
+

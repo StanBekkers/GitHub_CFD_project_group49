@@ -25,13 +25,11 @@ for J = Jstart:Jend
     % At the inlet boundary:
     Ari (Istart-1) = 0;
     Cmri(Istart-1) = fi(Istart-1,J);
-    
     for I = Istart:Iend % Forward substitution
         Ari(I)  = aE(I,J)/(aP(I,J) - aW(I,J)*Ari(I-1)); % eq. 7.6b
         Cri     = aN(I,J)*fi(I,J+1) + aS(I,J)*fi(I,J-1) + b(I,J);
         Cmri(I) = (aW(I,J)*Cmri(I-1) + Cri)/(aP(I,J) - aW(I,J)*Ari(I-1)); % eq. 7.6c
     end
-    
     for I = Iend:-1:Istart  % Back substitution
         fi(I,J) = Ari(I)*fi(I+1,J) + Cmri(I); % eq. 7.6a
     end
@@ -42,13 +40,11 @@ for J = Jend-1:-1:Jstart
     % At the inlet boundary:
     Ari (Istart-1) = 0;
     Cmri(Istart-1) = fi(Istart-1,J);
-    
     for I = Istart:Iend % Forward substitution
         Ari(I)  = aE(I,J)/(aP(I,J) - aW(I,J)*Ari(I-1)); % eq. 7.6b
         Cri     = aN(I,J)*fi(I,J+1) + aS(I,J)*fi(I,J-1) + b(I,J);
         Cmri(I) = (aW(I,J)*Cmri(I-1) + Cri)/(aP(I,J) - aW(I,J)*Ari(I-1));  % eq. 7.6c
     end
-    
     for I = Iend:-1:Istart  % Back substitution
         fi(I,J) = Ari(I)*fi(I+1,J) + Cmri(I); % eq. 7.6a
     end
@@ -71,13 +67,11 @@ for I = Istart:Iend
     % At the bottom boundary:
     Ari(Jstart-1) = 0;
     Cmri(Jstart-1) = fi(I,Jstart-1);
-    
     for J = Jstart:Jend % Forward substitution
         Ari(J)  = aN(I,J)/(aP(I,J) - aS(I,J)*Ari(J-1)); % eq. 7.6b
         Cri     = aE(I,J)*fi(I+1,J) + aW(I,J)*fi(I-1,J) + b(I,J);
         Cmri(J) = (aS(I,J)*Cmri(J-1) + Cri)/(aP(I,J) - aS(I,J)*Ari(J-1)); % eq. 7.6c
     end
-    
     for J = Jend:-1:Jstart % Back substitution
         fi(I,J) = Ari(J)*fi(I,J+1) + Cmri(J); % eq. 7.6a
     end
