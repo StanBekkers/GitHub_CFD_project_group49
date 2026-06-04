@@ -51,37 +51,69 @@ for I = Istart:Iend
         % transport of v through the baffles can be switched off by setting the coefficients to zero
         
         %lower walls: 
-         if (J < ceil((NPJ+1)/6)) 
+        base_frac = 2/10;
+         if (J < ceil(base_frac*(NPJ+1))) 
             aW(I,j) = 0;
             aE(I,j) = 0;
          end
         %upper walls:
-        if (J > ceil(5*(NPJ+1)/6)) 
+        if (J > ceil((1-base_frac)*(NPJ+1))) 
             aW(I,j) = 0;
             aS(I,j) = 0; 
         end
 
-        L_triangle = ceil(0.05*(NPI+1)); 
-        Start_L_triangle = ceil(3*(NPI+1)/10);
-        End_L_triangle = Start_L_triangle +L_triangle;
-        H_domain = (NPJ+1);
-        Start_H_bottom = ceil(H_domain/6);
-        Start_H_top = H_domain - Start_H_bottom;
-        H_triangle = ceil(3/10*H_domain);
-        %first triangles: 
-        if ((Start_L_triangle-1 <= i) && (i <= End_L_triangle) && (J < ceil( (H_triangle/ L_triangle)  + Start_H_bottom)))
-            aE(I,j) = 0;
-        end
-        if ((Start_L_triangle <= i) && (i <= End_L_triangle) && (J < ceil( (H_triangle/ L_triangle) + Start_H_bottom)))
-            aW(I,j) = 0;
-        end
-        if ((Start_L_triangle-1<= i) && (i <= End_L_triangle) && (J > ceil((-H_triangle/L_triangle) + Start_H_top)))
-            aE(I,j) = 0;
-        end
-        if ((Start_L_triangle<= i) && (i <= End_L_triangle) && (J > ceil((-H_triangle/L_triangle) + Start_H_top)))
-            aW(I,j) = 0;
-        end
-        
+L_triangle = ceil(0.05*(NPI+1));
+Start_L_base = ceil(base_frac*(NPI+1));
+End_limit = ceil((1 - base_frac)*(NPI+1));   % → 7/10
+
+H_domain = (NPJ+1);
+Start_H_bottom = ceil(base_frac*H_domain);
+Start_H_top = H_domain - Start_H_bottom;
+H_triangle = ceil((1/3)*base_frac * H_domain);   % = 1/10 * H_domain
+%zigzag_bottom = ceil(0.5*H_triangle);
+
+% --- Loop over repeated triangles ---
+for offset = 0:L_triangle:(End_limit - Start_L_base)
+
+    Start_L_triangle = Start_L_base + offset;
+    End_L_triangle   = Start_L_triangle + L_triangle;
+
+    i_shift = i - Start_L_triangle;
+
+    % --- precompute triangle lines ---
+    lower_line = ceil((-i_shift*H_triangle/L_triangle) + H_triangle + Start_H_bottom);
+    upper_line = ceil((-i_shift*H_triangle/L_triangle) + Start_H_top);
+    center_line = ceil(0.5 * (lower_line + upper_line));
+    lower_zigzag = center_line - H_triangle;
+    upper_zigzag = center_line + H_triangle;
+
+    % --- same logic, but cleaner ---
+    if ((Start_L_triangle-1 <= i) && (i <= End_L_triangle) && (J < lower_line))
+        aE(I,j) = 0;
+    end
+
+    if ((Start_L_triangle <= i) && (i <= End_L_triangle) && (J < lower_line))
+        aW(I,j) = 0;
+    end
+    if ((Start_L_triangle-1 <= i) && (i <= End_L_triangle) && J <  upper_zigzag && J > lower_zigzag)
+        aE(I,j) = 0;
+    end
+
+     if ((Start_L_triangle <= i) && (i <= End_L_triangle) && J <  upper_zigzag && J > lower_zigzag)
+        aW(I,j) = 0;
+    end
+
+    if ((Start_L_triangle-1 <= i) && (i <= End_L_triangle) && (J > upper_line))
+        aE(I,j) = 0;
+    end
+
+    if ((Start_L_triangle <= i) && (i <= End_L_triangle) && (J > upper_line))
+        aW(I,j) = 0;
+    end
+
+
+end
+
         % eq. 8.31 without time dependent terms (see also eq. 5.14):
         aP(I,j) = aW(I,j) + aE(I,j) + aS(I,j) + aN(I,j) + Fe - Fw + Fn - Fs - SP(I,J);
         

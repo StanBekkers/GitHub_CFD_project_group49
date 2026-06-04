@@ -45,27 +45,51 @@ for I = Istart:Iend
          % u can be fixed to zero by setting SP to a very large value
 
          % lower walls: 
-          if (J < ceil((NPJ+1)/6))
+         base_frac = 2/10;
+          if (J < ceil(base_frac*(NPJ+1)))
             SP(i,J) = -LARGE;
           end
          % upper walls: 
-          if (J > ceil(5*(NPJ+1)/6))
+          if (J > ceil((1-base_frac)*(NPJ+1)))
             SP(i,J) = -LARGE;
           end
-        L_triangle = ceil(0.05*(NPI+1));
-        Start_L_triangle = ceil(3*(NPI+1)/10);
-        End_L_triangle = Start_L_triangle +L_triangle;
-        H_domain = (NPJ+1);
-        Start_H_bottom = ceil(H_domain/6);
-        Start_H_top = H_domain - Start_H_bottom;
-        H_triangle = ceil(3/10*H_domain);
-        %first triangles: 
-        if ((Start_L_triangle <= i) && (i <= End_L_triangle) && (J < ceil( (H_triangle/ L_triangle)   + Start_H_bottom)))
-            SP(i, J) = -LARGE;
+
+L_triangle = ceil(0.05*(NPI+1));
+Start_L_base = ceil(base_frac*(NPI+1));
+End_limit = ceil((1 - base_frac)*(NPI+1));   
+
+H_domain = (NPJ+1);
+Start_H_bottom = ceil(base_frac*H_domain);
+Start_H_top = H_domain - Start_H_bottom;
+H_triangle = ceil((1/3)*base_frac * H_domain);   % = 1/10 * H_domain
+%zigzag_bottom = ceil(0.5*H_triangle);
+
+% --- Loop over repeated triangles ---
+for offset = 0:L_triangle:(End_limit - Start_L_base)
+    Start_L_triangle = Start_L_base + offset;
+    End_L_triangle = Start_L_triangle + L_triangle;
+    % local coordinate
+    i_shift = i - Start_L_triangle;
+    % --- triangle mask ---
+    if ((Start_L_triangle <= i) && (i <= End_L_triangle))
+      lower_line = ceil((-i_shift*H_triangle/L_triangle) + H_triangle + Start_H_bottom);
+      upper_line = ceil((-i_shift*H_triangle/L_triangle) + Start_H_top);
+      center_line = ceil(0.5 * (lower_line + upper_line));
+      lower_zigzag = center_line - H_triangle;
+      upper_zigzag = center_line + H_triangle;
+
+        if (J < lower_line)
+            SP(i,J) = -LARGE;
         end
-        if ((Start_L_triangle<= i) && (i <= End_L_triangle) && (J > ceil((-H_triangle/L_triangle) + Start_H_top)))
-            SP(i,J) = -LARGE; 
+        if (J <  upper_zigzag && J > lower_zigzag)
+            SP(i,J) = -LARGE;
         end
+        if (J > upper_line)
+            SP(i,J) = -LARGE;
+        end
+        
+    end
+end
 
         % The coefficients (hybrid differencing scheme)
         aW(i,J) = max([ Fw, Dw + Fw/2, 0.]);
