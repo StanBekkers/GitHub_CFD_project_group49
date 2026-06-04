@@ -17,6 +17,9 @@ global NPI NPJ XMAX YMAX LARGE U_IN
 
 % variables
 global x x_u y y_v u v pc p T rho mu Gamma Cp aP aE aW aN aS b d_u d_v  SMAX SAVG relax_rho 
+global Q_chip x_chip_start x_chip_end y_chip_start y_chip_end heat_zone
+
+heat_zone = struct('x_start', {}, 'x_end', {}, 'q_wall', {}, 'R_copper', {});
     
 % constantsa
 NPI        = 2*48;        % number of grid cells in x-direction [-]
@@ -28,13 +31,57 @@ U_ITER     = 1;         % number of Newton iterations for u equation [-]
 V_ITER     = 1;         % number of Newton iterations for u equation [-]
 PC_ITER    = 200;       % number of Newton iterations for pc equation [-]
 T_ITER     = 1;         % number of Newton iterations for T equation [-]
-SMAXneeded = 1E-8;      % maximum accepted error in mass balance [kg/s]
-SAVGneeded = 1E-9;      % maximum accepted average error in mass balance [kg/s]
+SMAXneeded = 1E-7;      % maximum accepted error in mass balance [kg/s]
+SAVGneeded = 1E-8;      % maximum accepted average error in mass balance [kg/s]
 LARGE      = 1E30;      % arbitrary very large value [-]
 P_ATM      = 101000.;   % atmospheric pressure [Pa]
 U_IN       = 0.02;      % in flow velocity [m/s]
 NPRINT     = 1;         % number of iterations between printing output to screen
 
+% Copper plate properties
+k_copper = 401;          % W/m·K
+t_copper = 0.003;        % m - 3mm thick copper baseplate
+
+% Contact area per zone (2D: width * unit depth of 1m)
+A_left   = (0.3 * XMAX) * 1;     % m²
+A_core   = (0.4 * XMAX) * 1;     % m²
+A_right  = (0.3 * XMAX) * 1;     % m²
+
+% Total power per zone
+P_left   = 25;           % W - VRM/memory left
+P_core   = 150;          % W - GPU core
+P_right  = 25;           % W - VRM/memory right
+
+% Heat flux at copper surface [W/m²]
+% This is what actually enters the fluid after passing through copper
+q_flux_left  = P_left  / A_left;     % ~174  W/m²
+q_flux_core  = P_core  / A_core;     % ~781  W/m²
+q_flux_right = P_right / A_right;    % ~174  W/m²
+
+% Copper thermal resistance per zone [K/W]
+% R = t / (k * A) - tells you temperature drop across copper
+R_left   = t_copper / (k_copper * A_left);
+R_core   = t_copper / (k_copper * A_core);
+R_right  = t_copper / (k_copper * A_right);
+
+% Expected temperature drop across copper plate [K]
+% Just for reference/sanity check - printed but not used in solver
+dT_copper_left  = P_left  * R_left;
+dT_copper_core  = P_core  * R_core;
+dT_copper_right = P_right * R_right;
+
+fprintf('Copper dT - Left: %.3f K, Core: %.2f K, Right: %.3f K\n', ...
+        dT_copper_left, dT_copper_core, dT_copper_right);
+
+% Store zones - note q_wall not q_vol, entering as boundary flux
+heat_zone(1) = struct('x_start', 0.0,         'x_end', 0.3*XMAX, ...
+                      'q_wall',  q_flux_left,  'R_copper', R_left);
+
+heat_zone(2) = struct('x_start', 0.3*XMAX,    'x_end', 0.7*XMAX, ...
+                      'q_wall',  q_flux_core,  'R_copper', R_core);
+
+heat_zone(3) = struct('x_start', 0.7*XMAX,    'x_end', 1.0*XMAX, ...
+                      'q_wall',  q_flux_right, 'R_copper', R_right);
 %% main calculations
 init();  %call initialization function
 
@@ -181,3 +228,6 @@ colorbar
 xlabel('x')
 ylabel('y')
 title('Pressure')
+
+
+
