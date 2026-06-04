@@ -18,7 +18,7 @@ global NPI NPJ XMAX YMAX LARGE U_IN
 % variables
 global x x_u y y_v u v pc p T rho mu Gamma Cp aP aE aW aN aS b d_u d_v  SMAX SAVG relax_rho 
     
-% constants
+% constantsa
 NPI        = 48;        % number of grid cells in x-direction [-]
 NPJ        = 24;        % number of grid cells in y-direction [-]
 XMAX       = 0.96;      % width of the domain [m]

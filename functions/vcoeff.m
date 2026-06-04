@@ -61,19 +61,24 @@ for I = Istart:Iend
             aS(I,j) = 0; 
         end
 
- N_t_points_u = ceil(5*(NPI+1)/10) - ceil(4*(NPI+1)/10);
-     
+        L_triangle = ceil(0.05*(NPI+1)); 
+        Start_L_triangle = ceil(3*(NPI+1)/10);
+        End_L_triangle = Start_L_triangle +L_triangle;
+        H_domain = (NPJ+1);
+        Start_H_bottom = ceil(H_domain/6);
+        Start_H_top = H_domain - Start_H_bottom;
+        H_triangle = ceil(3/10*H_domain);
         %first triangles: 
-        if (ceil(4*(NPI+1)/10)-1<= i && i <=(ceil(5*(NPI+1)/10)) && J < ceil( (1/ N_t_points_u) * ceil(3*(NPJ+1)/10) + ceil((NPJ+1)/6)))
+        if ((Start_L_triangle-1 <= i) && (i <= End_L_triangle) && (J < ceil( (H_triangle/ L_triangle)  + Start_H_bottom)))
             aE(I,j) = 0;
         end
-        if (ceil(4*(NPI+1)/10)<= i && i <=(ceil(5*(NPI+1)/10)) && J < ceil( (1/ N_t_points_u) * ceil(3*(NPJ+1)/10) + ceil((NPJ+1)/6)))
+        if ((Start_L_triangle <= i) && (i <= End_L_triangle) && (J < ceil( (H_triangle/ L_triangle) + Start_H_bottom)))
             aW(I,j) = 0;
         end
-        if (ceil(4*(NPI+1)/10)-1<= i && i <=(ceil(5*(NPI+1)/10)) && J > ceil((-1/N_t_points_u)*ceil(7*(NPJ+1)/10) +ceil(5*(NPJ+1)/6)))
+        if ((Start_L_triangle-1<= i) && (i <= End_L_triangle) && (J > ceil((-H_triangle/L_triangle) + Start_H_top)))
             aE(I,j) = 0;
         end
-        if (ceil(4*(NPI+1)/10)<= i && i <=(ceil(5*(NPI+1)/10)) && J > ceil((-1/N_t_points_u)*ceil(7*(NPJ+1)/10) +ceil(5*(NPJ+1)/6)))
+        if ((Start_L_triangle<= i) && (i <= End_L_triangle) && (J > ceil((-H_triangle/L_triangle) + Start_H_top)))
             aW(I,j) = 0;
         end
         
