@@ -13,7 +13,7 @@ close all
 clc
 %% declare all constants and variables
 % global contants
-global NPI NPJ XMAX YMAX LARGE U_IN
+global NPI NPJ XMAX YMAX LARGE U_IN Cmu Ti
 
 % variables
 global x x_u y y_v u v pc p T rho mu Gamma Cp aP aE aW aN aS b d_u d_v  SMAX SAVG relax_rho 
@@ -37,6 +37,10 @@ LARGE      = 1E30;      % arbitrary very large value [-]
 P_ATM      = 101000.;   % atmospheric pressure [Pa]
 U_IN       = 0.02;      % in flow velocity [m/s]
 NPRINT     = 1;         % number of iterations between printing output to screen
+
+% k-epsilon constants (standard)
+Cmu        = 0.09;
+Ti         = 0.04;      % turbulence intensity at inlet [-]
 
 % Copper plate properties
 k_copper = 401;          % W/m·K
