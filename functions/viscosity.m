@@ -3,14 +3,14 @@ function [] = viscosity()
 % mut  = rho * Cmu * k^2 / (eps + SMALL)
 % mueff = mu + mut   (used in momentum, k, eps diffusion)
 % Gamma is also updated with turbulent thermal diffusivity: (mu + mut/Pr_t)/Cp
-
+ 
 % constants
 global NPI NPJ Cmu SMALL
 % variables
 global rho k eps mu mut mueff Gamma Cp
-
-Pr_t = 0.9;   % turbulent Prandtl number for air
-
+ 
+Pr_t = 7.0;   % turbulent Prandtl number for water at ~20 deg C
+ 
 for I = 1:NPI+2
     for J = 1:NPJ+2
         mut(I,J)   = rho(I,J) * Cmu * k(I,J)^2 / (eps(I,J) + SMALL);
