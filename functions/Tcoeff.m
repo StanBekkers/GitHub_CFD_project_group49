@@ -2,10 +2,10 @@ function [] = Tcoeff()
 % Purpose: To calculate the coefficients for the T equation.
 
 % constants
-global NPI NPJ 
+global NPI NPJ YMAX
 % variables
 global x x_u y y_v T Gamma SP Su F_u F_v relax_T Istart Iend Jstart Jend ...
-    b aE aW aN aS aP heat_zone
+    b aE aW aN aS aP heat_zone Cp
 
 Istart = 2;
 Iend = NPI+1;
@@ -14,26 +14,34 @@ Jend = NPJ+1;
 
 convect();
 
+h_base_frac = 2/10;
+
+% External air properties
+h_air = 15.0;       % Convective heat transfer coefficient to outside air [W/m^2K]
+T_air = 293.15;     % Ambient air temperature [K] (20 degrees C)
+k_copper = 401.0;   % Solid copper thermal conductivity [W/mK]
+Dy = YMAX / NPJ;    % Cell height
+
+% Thermal resistance from the boundary cell center to the outside air
+R_air = (0.5 * Dy) / k_copper + 1 / h_air;
+
 for I = Istart:Iend
     i = I;
     for J = Jstart:Jend
         j = J;
         % Geometrical parameters: Areas of the cell faces
-        AREAw = y_v(j+1) - y_v(j); % = A(i,J) See fig. 6.2 or fig. 6.5
+        AREAw = y_v(j+1) - y_v(j); 
         AREAe = AREAw;
-        AREAs = x_u(i+1) - x_u(i); % = A(I,j)
+        AREAs = x_u(i+1) - x_u(i); 
         AREAn = AREAs;
         
-        % The convective mass flux defined in eq. 5.8a
-        % note:  F = rho*u but Fw = (rho*u)w = rho*u*AREAw per definition.    
+        % The convective mass flux
         Fw = F_u(i,J)*AREAw;
         Fe = F_u(i+1,J)*AREAe;
         Fs = F_v(I,j)*AREAs;
         Fn = F_v(I,j+1)*AREAn;
         
-        % The transport by diffusion defined in eq. 5.8b
-        % note: D = mu/Dx but Dw = (mu/Dx)*AREAw per definition        
-        % The conductivity, Gamma, at the interface is calculated with the use of a harmonic mean.        
+        % The transport by diffusion (harmonic mean handles the fluid-solid interface)
         Dw = ((Gamma(I-1,J)*Gamma(I,J))/(Gamma(I-1,J)*(x(I) - x_u(i)) ...
             + Gamma(I,J)*(x_u(i) - x(I-1))))*AREAw;
         De = ((Gamma(I,J)*Gamma(I+1,J))/(Gamma(I,J)*(x(I+1) - x_u(i+1)) ...
@@ -43,69 +51,59 @@ for I = Istart:Iend
         Dn = ((Gamma(I,J)*Gamma(I,J+1))/(Gamma(I,J)*(y(J+1) - y_v(j+1)) ...
             + Gamma(I,J+1)*(y_v(j+1) - y(J))))*AREAn;
         
-            % The source terms
+        % The source terms
         SP(I,J) = 0.;
         Su(I,J) = 0.;
         
-        % --- Volumetric heat source: CPU/GPU chip ---
-        for idx = 1:length(heat_zone)
-            if (x(I) >= heat_zone(idx).x_start && x(I) <= heat_zone(idx).x_end)
-                cell_vol = (x_u(i+1) - x_u(i)) * (y_v(j+1) - y_v(j));
-                Su(I,J)  = Su(I,J) + heat_zone(idx).q_wall * cell_vol;
+        % --- Boundary Source Terms (Ambient Air Cooling & Chip Heat) ---
+        dx = x_u(i+1) - x_u(i);
+        
+        % 1. Bottom wall boundary cells (J = 2)
+        if J == 2
+            is_in_chip_zone = false;
+            q_chip = 0;
+            for idx = 1:length(heat_zone)
+                if (x(I) >= heat_zone(idx).x_start && x(I) <= heat_zone(idx).x_end)
+                    is_in_chip_zone = true;
+                    q_chip = heat_zone(idx).q_wall;
+                end
+            end
+            
+            if is_in_chip_zone
+                % Bottom is covered by chip: Inject heat flux into bottom of copper baseplate
+                Su(I,J) = Su(I,J) + (q_chip * dx) / Cp(I,J);
+            else
+                % Bottom is exposed to air: Convective cooling
+                SP(I,J) = SP(I,J) - (dx / (R_air * Cp(I,J)));
+                Su(I,J) = Su(I,J) + (T_air * dx) / (R_air * Cp(I,J));
             end
         end
+        
+        % 2. Top wall boundary cells (J = NPJ + 1)
+        if J == NPJ+1
+            % Top is fully exposed to air: Convective cooling
+            SP(I,J) = SP(I,J) - (dx / (R_air * Cp(I,J)));
+            Su(I,J) = Su(I,J) + (T_air * dx) / (R_air * Cp(I,J));
+        end
+        
         % The coefficients (hybrid differencing scheme)
-        aW(I,j) = max([ Fw, Dw + Fw/2, 0.]);
-        aE(I,j) = max([-Fe, De - Fe/2, 0.]);
-        aS(I,j) = max([ Fs, Ds + Fs/2, 0.]);
-        aN(I,j) = max([-Fn, Dn - Fn/2, 0.]);
+        aW(I,J) = max([ Fw, Dw + Fw/2, 0.]);
+        aE(I,J) = max([-Fe, De - Fe/2, 0.]);
+        aS(I,J) = max([ Fs, Ds + Fs/2, 0.]);
+        aN(I,J) = max([-Fn, Dn - Fn/2, 0.]);
         
+        % (Note: No manual zeroing of coefficients is needed here. Copper wall cells
+        % now naturally conduct heat in 2D to their neighbors via conjugate heat transfer)
         
-        % transport of T through the baffles can be switched off by setting the coefficients to zero
-
-        %lower walls: 
-         if (J < ceil((NPJ+1)/6)) 
-            aE(I,j) = 0;
-            
-            aW(I,j) = 0;
-            aN(I,j) = 0;
-         end
-        %upper walls:
-        if (J > ceil(5*(NPJ+1)/6)) 
-            aE(I,j) = 0;
-            aS(I,j) = 0;
-            aW(I,j) = 0;
-            
-         end
-        
-        if (I == ceil((NPI+1)/5)-1 && J < ceil((NPJ+1)/3))     % left of baffle #1
-            aE(I,J) = 0;
-        end       
-        if (I == ceil((NPI+1)/5)   && J < ceil((NPJ+1)/3))     % right of baffle #1
-            aW(I,J) = 0;
-        end
-        
-        if (I == ceil(2*(NPI+1)/5)-1 && J > ceil(2*(NPJ+1)/3)) % left of baffle #2
-            aE(I,J) = 0;
-        end       
-        if (I == ceil(2*(NPI+1)/5)   && J > ceil(2*(NPJ+1)/3)) % right of baffle #2
-            aW(I,J) = 0;
-        end
-        
-        % eq. 8.31 without time dependent terms (see also eq. 5.14):
+        % eq. 8.31 without time dependent terms:
         aP(I,J) = aW(I,J) + aE(I,J) + aS(I,J) + aN(I,J) + Fe - Fw + Fn - Fs - SP(I,J);
         
         % Setting the source term equal to b       
         b(I,J) = Su(I,J);
         
-        % Introducing relaxation by eq. 6.36 . and putting also the last
-        % term on the right side into the source term b(i,J)        
+        % Introducing relaxation
         aP(I,J) = aP(I,J) / relax_T;
-        b (I,J) = b (I,J) + (1 - relax_T)*aP(I,J)*T(I,J);
-        
-        % now the TDMA algorithm can be called to solve the equation.
-        % This is done in the next step of the main program.
+        b(I,J)  = b(I,J) + (1 - relax_T)*aP(I,J)*T(I,J);
     end
 end
 end
-
