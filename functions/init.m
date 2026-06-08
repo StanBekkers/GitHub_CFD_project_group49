@@ -155,11 +155,11 @@ u(NPI+1,2:NPJ+1) = 0.5*U_IN;
 % would be zero at first iteration=>m_in/m_out =INF
 
 % Setting the relaxation parameters
-relax_u   = 0.8;            % See eq. 6.36
+relax_u   = 0.3;            % See eq. 6.36
 relax_v   = relax_u;        % See eq. 6.37
-relax_pc  = 1.1 - relax_u;  % See eq. 6.33
+relax_pc  = 0.3;  % See eq. 6.33
 relax_T   = 1.0;            % Relaxation factor for temperature
-relax_rho = 0.1;            % Relaxation factor for density
+relax_rho = 0.0;            % Relaxation factor for density
 % end of initilization=====================================================
 end
 
