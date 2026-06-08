@@ -114,16 +114,21 @@ u(:,:)   = 0.;    % Velocity in x-direction
 v(:,:)   = 0.;    % Velocity in y-direction
 p(:,:)   = 0.;    % Relative pressure
 pc(:,:)  = 0.;    % Pressure correction (equivalet to p' in ref. 1).
-T(:,:)   = 273.;  % Temperature
-rho(:,:) = 1.0;   % Density
-mu(:,:)  = 2.E-5; % Viscosity
-Cp(:,:)  = 1013.; % J/(K*kg) Heat capacity - aSAVGed constant for this problem
-Gamma    = 0.0315./Cp; % Thermal conductivity
-d_u(:,:) = 0.;    % Variable d(i,j) to calculate pc defined in 6.23
-d_v(:,:) = 0.;    % Variable d(i,j) to calculate pc defined in 6.23
-b(:,:)   = 0.;	  % The general constant
-SP(:,:)  = 0.;    % Source term
-Su(:,:)  = 0.;	  % Source term
+
+% --- Water Properties at ~20°C ---
+T(:,:)   = 293.15;  % Initialize the entire domain to 293.15 K (20°C)
+rho(:,:) = 1000.0;  % Density of water [kg/m^3] (constant)
+mu(:,:)  = 1.0E-3;  % Dynamic viscosity of water [Pa*s] (constant)
+Cp(:,:)  = 4184.;   % Specific heat capacity [J/(kg*K)] (constant)
+Gamma    = 0.6./Cp; % Thermal conductivity (k = 0.6 W/mK) divided by Cp
+
+d_u(:,:) = 0.;    
+d_v(:,:) = 0.;    
+b(:,:)   = 0.;	  
+SP(:,:)  = 0.;    
+Su(:,:)  = 0.;	  
+
+u(NPI+1,2:NPJ+1) = 0.5*U_IN;
 
 % Hydraulic diameter ~ channel height (middle region)
 L_t   = 0.07 * (YMAX * 4/6);   % turbulent length scale (0.07 * D_h)
@@ -144,7 +149,7 @@ yplus2(:,:) = 11.63;
 % Initialise effective viscosity with turbulent contribution
 mut(:,:)   = rho(1,1)*Cmu*k_init^2 / eps_init;
 mueff(:,:) = mu(1,1) + mut(1,1);
- 
+     
 u(NPI+1,2:NPJ+1) = 0.5*U_IN;
 % Important to avoid crash!! Othervise m_out calculated in subroutine globcont
 % would be zero at first iteration=>m_in/m_out =INF

@@ -6,17 +6,26 @@ global NPI NPJ U_IN
 % variables
 global  u v T m_in m_out k eps y_v F_u Ti Cmu
 
-% Fixed temperature in Kelvin at the upper and lower wall
-T(1:NPI+2,1:ceil((NPJ+1)/6)-1)     = 373.; % lower wall
-T(1:NPI+2,ceil(5*(NPJ+1)/6+1):NPJ+2) = 373.; % upper wall
+global  u v T m_in m_out y_v F_u
 
-% Fixed temperature in Kelvin of the incoming fluid
-T(1,ceil((NPJ+1)/6):ceil(5*(NPJ+1)/6)) = 273.; 
+% Fixed temperature in Kelvin of the incoming fluid (293.15 K = 20°C)
+T(1,ceil((NPJ+1)/6):ceil(5*(NPJ+1)/6)) = 293.15; 
 
 % Setting the velocity at inlet
 u(2,ceil((NPJ+1)/6):ceil(5*(NPJ+1)/6)) = U_IN;
 
-% Inlet: turbulence BCs from turbulence intensity Ti
+% Adiabatic walls: Set solid wall temp equal to adjacent active fluid cell temp
+% 1. Lower wall: Set all lower wall rows equal to the first active fluid row
+J_fluid_bottom = ceil((NPJ+1)/6);
+for J_wall = 1 : J_fluid_bottom - 1
+    T(1:NPI+2, J_wall) = T(1:NPI+2, J_fluid_bottom);
+end
+
+% 2. Upper wall: Set all upper wall rows equal to the last active fluid row
+J_fluid_top = ceil(5*(NPJ+1)/6);
+for J_wall = J_fluid_top + 1 : NPJ+2
+    T(1:NPI+2, J_wall) = T(1:NPI+2, J_fluid_top);
+end
 
 % L_t based on hydraulic diameter of the channel inlet region
 % Define inlet and outlet k and eps
