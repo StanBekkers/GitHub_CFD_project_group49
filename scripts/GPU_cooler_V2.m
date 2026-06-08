@@ -11,8 +11,6 @@
 clear
 close all
 clc
-%% declare all constants and variables
-% global contants
 global NPI NPJ XMAX YMAX LARGE SMALL U_IN
 
 % variables
@@ -25,11 +23,11 @@ global sigmak sigmaeps C1eps C2eps kappa ERough
 heat_zone = struct('x_start', {}, 'x_end', {}, 'q_wall', {}, 'R_copper', {});
     
 % constants
-NPI        = 2*48;        % number of grid cells in x-direction [-]
-NPJ        = 2*24;        % number of grid cells in y-direction [-]
-XMAX       = 0.96;      % width of the domain [m]
-YMAX       = 0.12;      % height of the domain [m]
-MAX_ITER   = 1000;      % maximum number of outer iterations [-]
+NPI        = 4*48;        % number of grid cells in x-direction [-]
+NPJ        = 4*24;        % number of grid cells in y-direction [-]
+XMAX       = 0.15;      % width of the domain [m]
+YMAX       = 0.05;      % height of the domain [m]
+MAX_ITER   = 100;      % maximum number of outer iterations [-]
 U_ITER     = 1;         % number of Newton iterations for u equation [-]
 V_ITER     = 1;         % number of Newton iterations for u equation [-]
 PC_ITER    = 200;       % number of Newton iterations for pc equation [-]
@@ -40,8 +38,9 @@ SMAXneeded = 1E-7;      % maximum accepted error in mass balance [kg/s]
 SAVGneeded = 1E-8;      % maximum accepted average error in mass balance [kg/s]
 LARGE      = 1E30;      % arbitrary very large value [-]
 P_ATM      = 101000.;   % atmospheric pressure [Pa]
-U_IN       = 0.02;      % in flow velocity [m/s]
+U_IN       = 0.05;      % in flow velocity [m/s]
 NPRINT     = 1;         % number of iterations between printing output to screen
+
 % k-epsilon constants (standard)
 Cmu        = 0.09;
 Ti         = 0.04;      % turbulence intensity at inlet [-]
@@ -124,8 +123,8 @@ while (iter <= MAX_ITER && SMAX > SMAXneeded && SAVG > SAVGneeded)
     end
     
     velcorr(); % Correct pressure and velocity
-
-    % Turbulence: solve k then eps, clip to physical bounds
+    
+  % Turbulence: solve k then eps, clip to physical bounds
     derivatives();
     kcoeff();
     for iter_k = 1:K_ITER
@@ -142,60 +141,69 @@ while (iter <= MAX_ITER && SMAX > SMAXneeded && SAVG > SAVGneeded)
     % Update turbulent viscosity and effective thermal conductivity
     viscosity();
 
+
     Tcoeff(); %call Tcoeffe.m function to calculate the coefficients for T function
     for iter_T = 1:T_ITER
         T = solve(T, b, aE, aW, aN, aS, aP); %solve T function
     end
-
+    
     % begin: density()==============================================================================
     % For liquid water, density is constant at 1000 kg/m^3
     rho(:,:) = 1000.0;
     % end of density calculation======================================================================
-
+    
     % begin: viscosity()==============================================================================
-    % Molecular viscosity: constant for water. Turbulent contribution handled by viscosity().
-    mu(1:NPI+2,2:NPJ+1) = 1.0E-3;
+    % Constant viscosity for water
+    mu(1:NPI+2,2:NPJ+1) = 1.0E-3;   
     % end of viscosity calculation======================================================================
     
 % begin: conductivity()===========================================================================
     % Purpose: Calculate thermal conductivity (Water in channel, Solid Copper in walls and fins)
-    base_frac = 2/10;
+    h_base_frac = 2/10;
+    l_base_frac = 3/10;
     L_triangle = ceil(0.05*(NPI+1));
-    Start_L_base = ceil(base_frac*(NPI+1));
-    End_limit = ceil((1 - base_frac)*(NPI+1));   
+    Start_L_base = ceil(l_base_frac*(NPI+1));
+    End_limit = ceil((1 - l_base_frac)*(NPI+1));   
     H_domain = (NPJ+1);
-    Start_H_bottom = ceil(base_frac*H_domain);
+    Start_H_bottom = ceil(h_base_frac*H_domain);
     Start_H_top = H_domain - Start_H_bottom;
-    H_triangle = ceil((1/3)*base_frac * H_domain);
+    H_triangle = ceil((1/4)*h_base_frac * H_domain);   % = 1/10 * H_domain
+    slope = H_triangle / L_triangle;
 
     for I = 1:NPI+2
         for J = 2:NPJ+1
-            % Default: Fluid (water) conductivity, including turbulent contribution
-            % viscosity() already computed the turbulent Gamma — use it for fluid cells
-            % (viscosity() sets Gamma = (mu + mut/Pr_t)/Cp; for water Pr_t = 7.0)
-            Gamma(I,J) = (1.0E-3 + mut(I,J)/7.0) / Cp(I,J);
+            % Default: Fluid (water) conductivity
+            Gamma(I,J) = 0.6 / Cp(I,J); 
             
             is_solid = false;
             
             % Check if cell falls inside the solid upper/lower wall boundaries
-            if (J < ceil(base_frac*(NPJ+1))) || (J > ceil((1-base_frac)*(NPJ+1)))
+            if (J < ceil(h_base_frac*(NPJ+1))) || (J > ceil((1-h_base_frac)*(NPJ+1)))
                 is_solid = true;
             end
             
             % Check if cell falls inside the solid triangle mesh/fins
-            for offset = 0:L_triangle:(End_limit - Start_L_base)
+            for offset = 0:L_triangle:(End_limit - Start_L_base - L_triangle)
                 Start_L_triangle = Start_L_base + offset;
                 End_L_triangle = Start_L_triangle + L_triangle;
-                i_shift = I - Start_L_triangle;
                 
                 if (I >= Start_L_triangle && I <= End_L_triangle)
-                    lower_line = ceil((-i_shift*H_triangle/L_triangle) + H_triangle + Start_H_bottom);
-                    upper_line = ceil((-i_shift*H_triangle/L_triangle) + Start_H_top);
-                    center_line = ceil(0.5 * (lower_line + upper_line));
-                    lower_zigzag = center_line - H_triangle;
-                    upper_zigzag = center_line + H_triangle;
+                    i_shift = I - Start_L_triangle;
+                    lower_line = ceil(-i_shift*slope + H_triangle + Start_H_bottom);
+                    upper_line = ceil(-i_shift*slope + Start_H_top);
+                    
+                    mid       = floor((lower_line + upper_line) / 2);
+                    band_half = floor((upper_line - lower_line) / 6);
 
-                    if (J < lower_line) || (J < upper_zigzag && J > lower_zigzag) || (J > upper_line)
+                    lower_zigzag1 = lower_line + band_half;
+                    upper_zigzag1 = lower_line + 2*band_half;
+
+                    lower_zigzag2 = upper_line - 2*band_half;
+                    upper_zigzag2 = upper_line - band_half;
+
+                    if (J < lower_line) || (J > upper_line) || ...
+                       (J > lower_zigzag1 && J < upper_zigzag1) || ...
+                       (J > lower_zigzag2 && J < upper_zigzag2)
                         is_solid = true;
                     end
                 end
@@ -208,6 +216,7 @@ while (iter <= MAX_ITER && SMAX > SMAXneeded && SAVG > SAVGneeded)
         end
     end
     % end of thermal conductivity calculation========================================================
+
 
     % begin: printConv(iter)========================================================================
     % print temporary results
@@ -415,3 +424,26 @@ for I = Istart:Iend
     end
 end
 end
+%% Visualize the Turbulence (k) profile
+[X, Y] = meshgrid(x, y);
+
+figure('Name', 'Turbulence Analysis');
+
+% Plot Turbulent Kinetic Energy (k)
+subplot(2,1,1)
+imagesc(x, y, k') 
+set(gca, 'YDir', 'normal')
+colorbar
+colormap('jet')
+xlabel('x [m]')
+ylabel('y [m]')
+title('Turbulent Kinetic Energy (k) [m^2/s^2]')
+
+% Plot Turbulent Viscosity (mut)
+subplot(2,1,2)
+imagesc(x, y, mut') 
+set(gca, 'YDir', 'normal')
+colorbar
+xlabel('x [m]')
+ylabel('y [m]')
+title('Turbulent Viscosity (\mu_t) [Pa\cdot s]')
