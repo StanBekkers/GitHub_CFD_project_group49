@@ -5,7 +5,7 @@ function [] = Tcoeff()
 global NPI NPJ 
 % variables
 global x x_u y y_v T Gamma SP Su F_u F_v relax_T Istart Iend Jstart Jend ...
-    b aE aW aN aS aP
+    b aE aW aN aS aP heat_zone
 
 Istart = 2;
 Iend = NPI+1;
@@ -43,15 +43,23 @@ for I = Istart:Iend
         Dn = ((Gamma(I,J)*Gamma(I,J+1))/(Gamma(I,J)*(y(J+1) - y_v(j+1)) ...
             + Gamma(I,J+1)*(y_v(j+1) - y(J))))*AREAn;
         
-        % The source terms
+            % The source terms
         SP(I,J) = 0.;
         Su(I,J) = 0.;
         
+        % --- Volumetric heat source: CPU/GPU chip ---
+        for idx = 1:length(heat_zone)
+            if (x(I) >= heat_zone(idx).x_start && x(I) <= heat_zone(idx).x_end)
+                cell_vol = (x_u(i+1) - x_u(i)) * (y_v(j+1) - y_v(j));
+                Su(I,J)  = Su(I,J) + heat_zone(idx).q_wall * cell_vol;
+            end
+        end
         % The coefficients (hybrid differencing scheme)
         aW(I,j) = max([ Fw, Dw + Fw/2, 0.]);
         aE(I,j) = max([-Fe, De - Fe/2, 0.]);
         aS(I,j) = max([ Fs, Ds + Fs/2, 0.]);
         aN(I,j) = max([-Fn, Dn - Fn/2, 0.]);
+        
         
         % transport of T through the baffles can be switched off by setting the coefficients to zero
 

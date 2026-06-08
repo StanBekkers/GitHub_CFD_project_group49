@@ -13,15 +13,15 @@ close all
 clc
 %% declare all constants and variables
 % global contants
-global NPI NPJ XMAX YMAX LARGE U_IN Cmu Ti
+global NPI NPJ XMAX YMAX LARGE U_IN
 
 % variables
 global x x_u y y_v u v pc p T rho mu Gamma Cp aP aE aW aN aS b d_u d_v  SMAX SAVG relax_rho 
-global Q_chip x_chip_start x_chip_end y_chip_start y_chip_end heat_zone
+global Q_chip x_chip_start x_chip_end y_chip_start y_chip_end heat_zone Ti Cmu
 
 heat_zone = struct('x_start', {}, 'x_end', {}, 'q_wall', {}, 'R_copper', {});
     
-% constantsa
+% constants
 NPI        = 2*48;        % number of grid cells in x-direction [-]
 NPJ        = 2*24;        % number of grid cells in y-direction [-]
 XMAX       = 0.96;      % width of the domain [m]
@@ -37,7 +37,6 @@ LARGE      = 1E30;      % arbitrary very large value [-]
 P_ATM      = 101000.;   % atmospheric pressure [Pa]
 U_IN       = 0.02;      % in flow velocity [m/s]
 NPRINT     = 1;         % number of iterations between printing output to screen
-
 % k-epsilon constants (standard)
 Cmu        = 0.09;
 Ti         = 0.04;      % turbulence intensity at inlet [-]
@@ -52,9 +51,9 @@ A_core   = (0.4 * XMAX) * 1;     % m²
 A_right  = (0.3 * XMAX) * 1;     % m²
 
 % Total power per zone
-P_left   = 25;           % W - VRM/memory left
-P_core   = 150;          % W - GPU core
-P_right  = 25;           % W - VRM/memory right
+P_left   = 50;           % W - VRM/memory left
+P_core   = 300;          % W - GPU core
+P_right  = 50;           % W - VRM/memory right
 
 % Heat flux at copper surface [W/m²]
 % This is what actually enters the fluid after passing through copper
@@ -120,39 +119,65 @@ while (iter <= MAX_ITER && SMAX > SMAXneeded && SAVG > SAVGneeded)
     end
     
     % begin: density()==============================================================================
-    % Purpose: Calculate the density rho(I, J) in the fluid as a function of the ideal gas law. 
-    % Note: rho at the walls are not needed in this case, and therefore not calculated.    
-    for I = 1:NPI+2
-        for J = 2:NPJ+1
-            if (I == 1) % Since p(1, J) doesn't exist, we set:
-                rho(I,J) = (1 - relax_rho)*rho(I,J) + relax_rho*(p(I+1,J) + P_ATM)/(287.*T(I,J));
-            else
-                rho(I,J) = (1 - relax_rho)*rho(I,J) + relax_rho*(p(I,J) + P_ATM)/(287.*T(I,J));
-            end
-        end
-    end
+    % For liquid water, density is constant at 1000 kg/m^3
+    rho(:,:) = 1000.0;
     % end of density calculation======================================================================
     
     % begin: viscosity()==============================================================================
-    % Purpose: Calculate the viscosity in the fluid as a function of temperature. 
-    % Max error in the actual temp. interval is 0.5%   
-    mu(1:NPI+2,2:NPJ+1) = (0.0395*T(1:NPI+2,2:NPJ+1) + 6.58)*1.E-6;   
+    % Constant viscosity for water
+    mu(1:NPI+2,2:NPJ+1) = 1.0E-3;   
     % end of viscosity calculation======================================================================
     
-    % begin: conductivity()===========================================================================
-    % Purpose: Calculate the thermal conductivity in the fluid as a function of temperature.    
+% begin: conductivity()===========================================================================
+    % Purpose: Calculate thermal conductivity (Water in channel, Solid Copper in walls and fins)
+    base_frac = 2/10;
+    L_triangle = ceil(0.05*(NPI+1));
+    Start_L_base = ceil(base_frac*(NPI+1));
+    End_limit = ceil((1 - base_frac)*(NPI+1));   
+    H_domain = (NPJ+1);
+    Start_H_bottom = ceil(base_frac*H_domain);
+    Start_H_top = H_domain - Start_H_bottom;
+    H_triangle = ceil((1/3)*base_frac * H_domain);
+
     for I = 1:NPI+2
         for J = 2:NPJ+1
-            Gamma(I,J) = (6.1E-5*T(I,J) + 8.4E-3)/Cp(I,J);
-            if (Gamma(I,J) < 0.)
-                output();
-                fprintf('Error: Gamma(%d,%d) = %e\n', I, J, Gamma(I,J));
-                exit(1);
+            % Default: Fluid (water) conductivity
+            Gamma(I,J) = 0.6 / Cp(I,J); 
+            
+            is_solid = false;
+            
+            % Check if cell falls inside the solid upper/lower wall boundaries
+            if (J < ceil(base_frac*(NPJ+1))) || (J > ceil((1-base_frac)*(NPJ+1)))
+                is_solid = true;
+            end
+            
+            % Check if cell falls inside the solid triangle mesh/fins
+            for offset = 0:L_triangle:(End_limit - Start_L_base)
+                Start_L_triangle = Start_L_base + offset;
+                End_L_triangle = Start_L_triangle + L_triangle;
+                i_shift = I - Start_L_triangle;
+                
+                if (I >= Start_L_triangle && I <= End_L_triangle)
+                    lower_line = ceil((-i_shift*H_triangle/L_triangle) + H_triangle + Start_H_bottom);
+                    upper_line = ceil((-i_shift*H_triangle/L_triangle) + Start_H_top);
+                    center_line = ceil(0.5 * (lower_line + upper_line));
+                    lower_zigzag = center_line - H_triangle;
+                    upper_zigzag = center_line + H_triangle;
+
+                    if (J < lower_line) || (J < upper_zigzag && J > lower_zigzag) || (J > upper_line)
+                        is_solid = true;
+                    end
+                end
+            end
+            
+            % If cell is solid (wall or mesh fin), overwrite with Copper thermal properties
+            if is_solid
+                Gamma(I,J) = 401.0 / Cp(I,J); % Copper thermal conductivity: 401.0 W/m·K
             end
         end
     end
     % end of thermal conductivity calculation========================================================
-    
+
     % begin: printConv(iter)========================================================================
     % print temporary results
     if iter == 1
@@ -234,4 +259,129 @@ ylabel('y')
 title('Pressure')
 
 
+
+%%
+function [] = Tcoeff()
+% Purpose: To calculate the coefficients for the T equation.
+
+% constants
+global NPI NPJ 
+% variables
+global x x_u y y_v T Gamma SP Su F_u F_v relax_T Istart Iend Jstart Jend ...
+    b aE aW aN aS aP heat_zone Cp
+
+Istart = 2;
+Iend = NPI+1;
+Jstart = 2;
+Jend = NPJ+1;
+
+convect();
+
+for I = Istart:Iend
+    i = I;
+    for J = Jstart:Jend
+        j = J;
+        % Geometrical parameters: Areas of the cell faces
+        AREAw = y_v(j+1) - y_v(j); % = A(i,J) See fig. 6.2 or fig. 6.5
+        AREAe = AREAw;
+        AREAs = x_u(i+1) - x_u(i); % = A(I,j)
+        AREAn = AREAs;
+        
+        % The convective mass flux defined in eq. 5.8a
+        % note:  F = rho*u but Fw = (rho*u)w = rho*u*AREAw per definition.    
+        Fw = F_u(i,J)*AREAw;
+        Fe = F_u(i+1,J)*AREAe;
+        Fs = F_v(I,j)*AREAs;
+        Fn = F_v(I,j+1)*AREAn;
+        
+        % The transport by diffusion defined in eq. 5.8b
+        % note: D = mu/Dx but Dw = (mu/Dx)*AREAw per definition        
+        % The conductivity, Gamma, at the interface is calculated with the use of a harmonic mean.        
+        Dw = ((Gamma(I-1,J)*Gamma(I,J))/(Gamma(I-1,J)*(x(I) - x_u(i)) ...
+            + Gamma(I,J)*(x_u(i) - x(I-1))))*AREAw;
+        De = ((Gamma(I,J)*Gamma(I+1,J))/(Gamma(I,J)*(x(I+1) - x_u(i+1)) ...
+            + Gamma(I+1,J)*(x_u(i+1) - x(I))))*AREAe;
+        Ds = ((Gamma(I,J-1)*Gamma(I,J))/(Gamma(I,J-1)*(y(J) - y_v(j)) ...
+            + Gamma(I,J)*(y_v(j) - y(J-1))))*AREAs;
+        Dn = ((Gamma(I,J)*Gamma(I,J+1))/(Gamma(I,J)*(y(J+1) - y_v(j+1)) ...
+            + Gamma(I,J+1)*(y_v(j+1) - y(J))))*AREAn;
+        
+            % The source terms
+        SP(I,J) = 0.;
+        Su(I,J) = 0.;
+        
+        % --- Volumetric heat source: CPU/GPU chip ---
+       % Apply ONLY to the bottom-most fluid cell (J = ceil((NPJ+1)/6))
+        if J == ceil((NPJ+1)/6)
+            for idx = 1:length(heat_zone)
+                if (x(I) >= heat_zone(idx).x_start && x(I) <= heat_zone(idx).x_end)
+                    % Use cell width (dx) for a boundary surface flux, not cell volume
+                    dx = x_u(i+1) - x_u(i);
+                    Su(I,J) = Su(I,J) + (heat_zone(idx).q_wall * dx) / Cp(I,J);
+                end
+            end
+        end
+        % The coefficients (hybrid differencing scheme)
+        aW(I,j) = max([ Fw, Dw + Fw/2, 0.]);
+        aE(I,j) = max([-Fe, De - Fe/2, 0.]);
+        aS(I,j) = max([ Fs, Ds + Fs/2, 0.]);
+        aN(I,j) = max([-Fn, Dn - Fn/2, 0.]);
+        
+        
+        % transport of T through the baffles can be switched off by setting the coefficients to zero
+
+        %lower walls: 
+         if (J < ceil((NPJ+1)/6)) 
+            aE(I,j) = 0;
+            
+            aW(I,j) = 0;
+            aN(I,j) = 0;
+         end
+        %upper walls:
+        if (J > ceil(5*(NPJ+1)/6)) 
+            aE(I,j) = 0;
+            aS(I,j) = 0;
+            aW(I,j) = 0;
+            
+         end
+        
+        % =================================================================
+        % --- Conduction through internal Baffles ---
+
+        k_baffle = 401.0; % Copper: 401.0 W/m·K (or 205.0 for Aluminum)
+        Gamma_baffle = k_baffle / Cp(I,J);
+        
+        % Baffle #1 (Lower baffle)
+        if (I == ceil((NPI+1)/5)-1 && J < ceil((NPJ+1)/3))     % left of baffle #1
+            aE(I,J) = (Gamma_baffle * AREAe) / (x(I+1) - x(I));
+        end       
+        if (I == ceil((NPI+1)/5)   && J < ceil((NPJ+1)/3))     % right of baffle #1
+            aW(I,J) = (Gamma_baffle * AREAw) / (x(I) - x(I-1));
+        end
+        
+        % Baffle #2 (Upper baffle)
+        if (I == ceil(2*(NPI+1)/5)-1 && J > ceil(2*(NPJ+1)/3)) % left of baffle #2
+            aE(I,J) = (Gamma_baffle * AREAe) / (x(I+1) - x(I));
+        end       
+        if (I == ceil(2*(NPI+1)/5)   && J > ceil(2*(NPJ+1)/3)) % right of baffle #2
+            aW(I,J) = (Gamma_baffle * AREAw) / (x(I) - x(I-1));
+        end
+        % =================================================================
+        
+        % eq. 8.31 without time dependent terms (see also eq. 5.14):
+        aP(I,J) = aW(I,J) + aE(I,J) + aS(I,J) + aN(I,J) + Fe - Fw + Fn - Fs - SP(I,J);
+        
+        % Setting the source term equal to b       
+        b(I,J) = Su(I,J);
+        
+        % Introducing relaxation by eq. 6.36 . and putting also the last
+        % term on the right side into the source term b(i,J)        
+        aP(I,J) = aP(I,J) / relax_T;
+        b (I,J) = b (I,J) + (1 - relax_T)*aP(I,J)*T(I,J);
+        
+        % now the TDMA algorithm can be called to solve the equation.
+        % This is done in the next step of the main program.
+    end
+end
+end
 
