@@ -27,7 +27,7 @@ NPI        = 4*48;        % number of grid cells in x-direction [-]
 NPJ        = 4*24;        % number of grid cells in y-direction [-]
 XMAX       = 0.15;      % width of the domain [m]
 YMAX       = 0.05;      % height of the domain [m]
-MAX_ITER   = 1000;      % maximum number of outer iterations [-]
+MAX_ITER   = 500;      % maximum number of outer iterations [-]
 U_ITER     = 1;         % number of Newton iterations for u equation [-]
 V_ITER     = 1;         % number of Newton iterations for u equation [-]
 PC_ITER    = 200;       % number of Newton iterations for pc equation [-]
@@ -267,6 +267,28 @@ xlabel('x [m]'); ylabel('y^+')
 title('Wall y^+ at Bottom Channel Wall')
 legend('y^+', 'Sublayer limit', 'Log-law upper limit')
 grid on
+
+%% Visualise velocity magnitude contour
+u_grid = zeros(NPI+1, NPJ);
+v_grid = zeros(NPI+1, NPJ);
+
+for I = 1:NPI+1
+    for J = 2:NPJ+1
+        u_grid(I, J-1) = 0.5*(u(I,J) + u(I+1,J));
+        v_grid(I, J-1) = 0.5*(v(I,J) + v(I,J+1));
+    end
+end
+
+V_mag = sqrt(u_grid.^2 + v_grid.^2);
+
+figure
+contourf(x(1:NPI+1), y(2:NPJ+1), V_mag', 30, 'LineColor', 'none')
+colorbar
+colormap(jet)
+xlabel('x [m]')
+ylabel('y [m]')
+title('Velocity Magnitude [m/s]')
+set(gca, 'YDir', 'normal')
 
 
 
