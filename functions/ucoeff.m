@@ -4,7 +4,7 @@ function [] = ucoeff()
 % constants
 global NPI NPJ LARGE 
 % variables
-global x x_u y y_v u p mu SP Su F_u F_v d_u relax_u Istart Iend Jstart Jend ...
+global x x_u y y_v u p mueff SP Su F_u F_v d_u relax_u Istart Iend Jstart Jend ...
       b aE aW aN aS aP
  
 Istart = 3;
@@ -32,10 +32,10 @@ for I = Istart:Iend
         
         % eq. 6.9e-6.9h - the transport by diffusion defined in eq. 5.8b
         % note: D = mu/Dx but Dw = (mu/Dx)*AREAw per definition
-        Dw = (mu(I-1,J)/(x_u(i) - x_u(i-1)))*AREAw;
-        De = (mu(I,J)/(x_u(i+1) - x_u(i)))*AREAe;
-        Ds = ((mu(I-1,J) + mu(I,J) + mu(I-1,J-1) + mu(I,J-1))/(4*(y(J) - y(J-1))))*AREAs;
-        Dn = ((mu(I-1,J+1) + mu(I,J+1) + mu(I-1,J) + mu(I,J))/(4*(y(J+1) - y(J))))*AREAn;
+        Dw = (mueff(I-1,J)/(x_u(i) - x_u(i-1)))*AREAw;
+        De = (mueff(I,J)/(x_u(i+1) - x_u(i)))*AREAe;
+        Ds = ((mueff(I-1,J) + mueff(I,J) + mueff(I-1,J-1) + mueff(I,J-1))/(4*(y(J) - y(J-1))))*AREAs;
+        Dn = ((mueff(I-1,J+1) + mueff(I,J+1) + mueff(I-1,J) + mueff(I,J))/(4*(y(J+1) - y(J))))*AREAn;
         
         % The source terms
         SP(i,J) = 0.;

@@ -1,19 +1,11 @@
 function [] = epscoeff()
 % Purpose: Calculate coefficients for the eps (dissipation rate) equation.
-%
-% Geometry is identical to ucoeff.m / vcoeff.m / kcoeff.m.
-%
-% Wall treatment:
-%   eps_wall = Cmu^(3/4) * k_P^(3/2) / (kappa * y_P)
-%   Applied via large-number Dirichlet: SP = -LARGE, Su = LARGE * eps_wall
-%
-% Interior: standard C1eps/C2eps production/destruction.
 
 % constants
 global NPI NPJ Cmu LARGE SMALL sigmaeps kappa C1eps C2eps
 % variables
 global x x_u y y_v SP Su F_u F_v mut rho Istart Iend ...
-    Jstart Jend b aE aW aN aS aP k eps eps_old E2
+    Jstart Jend b aE aW aN aS aP k eps eps_old E2 mu
 
 Istart = 2;
 Iend   = NPI+1;
@@ -23,7 +15,7 @@ Jend   = NPJ+1;
 convect();
 viscosity();
 
-% ---- Geometry parameters (identical to ucoeff.m / vcoeff.m / kcoeff.m) ----
+% ---- Geometry parameters ----
 h_base_frac    = 2/10;
 l_base_frac    = 3/10;
 L_triangle     = ceil(0.05*(NPI+1));
@@ -37,6 +29,9 @@ slope          = H_triangle / L_triangle;
 
 J_fluid_bottom = ceil(h_base_frac*(NPJ+1));
 J_fluid_top    = ceil((1-h_base_frac)*(NPJ+1));
+
+% Effective turbulent diffusivity for eps (includes molecular viscosity)
+Gamma_eps = mu + mut / sigmaeps;
 
 for I = Istart:Iend
     i = I;
@@ -53,45 +48,18 @@ for I = Istart:Iend
         Fs = F_v(I,j)*AREAs;
         Fn = F_v(I,j+1)*AREAn;
 
-        Dw = (mut(I-1,J)+SMALL)*(mut(I,J)+SMALL)/sigmaeps / ...
-             ((mut(I-1,J)+SMALL)*(x(I)-x_u(i)) + (mut(I,J)+SMALL)*(x_u(i)-x(I-1))) * AREAw;
-        De = (mut(I,J)+SMALL)*(mut(I+1,J)+SMALL)/sigmaeps / ...
-             ((mut(I,J)+SMALL)*(x(I+1)-x_u(i+1)) + (mut(I+1,J)+SMALL)*(x_u(i+1)-x(I))) * AREAe;
-        Ds = (mut(I,J-1)+SMALL)*(mut(I,J)+SMALL)/sigmaeps / ...
-             ((mut(I,J-1)+SMALL)*(y(J)-y_v(j)) + (mut(I,J)+SMALL)*(y_v(j)-y(J-1))) * AREAs;
-        Dn = (mut(I,J)+SMALL)*(mut(I,J+1)+SMALL)/sigmaeps / ...
-             ((mut(I,J)+SMALL)*(y(J+1)-y_v(j+1)) + (mut(I,J+1)+SMALL)*(y_v(j+1)-y(J))) * AREAn;
-
-        % Default: interior source terms
-        SP(I,J) = -C2eps * rho(I,J) * eps(I,J) / (k(I,J) + SMALL);
-        Su(I,J) =  C1eps * (eps(I,J) / (k(I,J) + SMALL)) * 2.0 * mut(I,J) * E2(I,J);
-        isWall  = false;
-
-        % ---- Channel bottom wall ----
-        if J == J_fluid_bottom
-            y_P      = y(J_fluid_bottom) - y(J_fluid_bottom - 1);
-            eps_wall = Cmu^0.75 * k(I,J)^1.5 / (kappa * y_P + SMALL);
-            SP(I,J)  = -LARGE;
-            Su(I,J)  =  LARGE * eps_wall;
-            isWall   = true;
+        % ---- Solid check to deactivate eps-transport in solid domains ----
+        is_solid = false;
+        if (J < J_fluid_bottom) || (J > J_fluid_top)
+            is_solid = true;
         end
-
-        % ---- Channel top wall ----
-        if J == J_fluid_top
-            y_P      = y(J_fluid_top + 1) - y(J_fluid_top);
-            eps_wall = Cmu^0.75 * k(I,J)^1.5 / (kappa * y_P + SMALL);
-            SP(I,J)  = -LARGE;
-            Su(I,J)  =  LARGE * eps_wall;
-            isWall   = true;
-        end
-
-        % ---- Fin / solid cells ----
+        
         for offset = 0:L_triangle:(End_limit - Start_L_base - L_triangle)
             Start_L_triangle = Start_L_base + offset;
             End_L_triangle   = Start_L_triangle + L_triangle;
 
-            if (i >= Start_L_triangle) && (i <= End_L_triangle)
-                i_shift = i - Start_L_triangle;
+            if (I >= Start_L_triangle) && (I <= End_L_triangle)
+                i_shift = I - Start_L_triangle;
                 lower_line = ceil(-i_shift*slope + H_triangle + Start_H_bottom);
                 upper_line = ceil(-i_shift*slope + Start_H_top);
 
@@ -101,18 +69,61 @@ for I = Istart:Iend
                 lower_zigzag2 = upper_line - 2*band_half;
                 upper_zigzag2 = upper_line - band_half;
 
-                isSolid = (J < lower_line) || (J > upper_line) || ...
-                          (J > lower_zigzag1 && J < upper_zigzag1) || ...
-                          (J > lower_zigzag2 && J < upper_zigzag2);
+                isSolidGeometry = (J < lower_line) || (J > upper_line) || ...
+                                  (J > lower_zigzag1 && J < upper_zigzag1) || ...
+                                  (J > lower_zigzag2 && J < upper_zigzag2);
 
-                if isSolid && ~isWall
-                    y_P      = 0.5 * AREAw;
-                    eps_wall = Cmu^0.75 * k(I,J)^1.5 / (kappa * y_P + SMALL);
-                    SP(I,J)  = -LARGE;
-                    Su(I,J)  =  LARGE * eps_wall;
-                    isWall   = true;
+                if isSolidGeometry
+                    is_solid = true;
                 end
             end
+        end
+
+        if is_solid
+            % Enforce eps floor in solids (Bypass relaxation)
+            SP(I,J) = -LARGE;
+            Su(I,J) = LARGE * 1e-10;
+            
+            aW(I,J) = 0.0;
+            aE(I,J) = 0.0;
+            aS(I,J) = 0.0;
+            aN(I,J) = 0.0;
+            aP(I,J) = LARGE;
+            b(I,J)  = Su(I,J);
+            continue;
+        end
+
+        % Transport by diffusion (harmonic mean of Gamma_eps)
+        Dw = (Gamma_eps(I-1,J)*Gamma_eps(I,J)) / ...
+             ((Gamma_eps(I-1,J))*(x(I)-x_u(i)) + (Gamma_eps(I,J))*(x_u(i)-x(I-1))) * AREAw;
+        De = (Gamma_eps(I,J)*Gamma_eps(I+1,J)) / ...
+             ((Gamma_eps(I,J))*(x(I+1)-x_u(i+1)) + (Gamma_eps(I+1,J))*(x_u(i+1)-x(I))) * AREAe;
+        Ds = (Gamma_eps(I,J-1)*Gamma_eps(I,J)) / ...
+             ((Gamma_eps(I,J-1))*(y(J)-y_v(j)) + (Gamma_eps(I,J))*(y_v(j)-y(J-1))) * AREAs;
+        Dn = (Gamma_eps(I,J)*Gamma_eps(I,J+1)) / ...
+             ((Gamma_eps(I,J))*(y(J+1)-y_v(j+1)) + (Gamma_eps(I,J+1))*(y_v(j+1)-y(J))) * AREAn;
+
+        % Default: interior source terms
+        SP(I,J) = -C2eps * rho(I,J) * eps(I,J) / (k(I,J) + SMALL);
+        Su(I,J) =  C1eps * (eps(I,J) / (k(I,J) + SMALL)) * mut(I,J) * E2(I,J); 
+        isWall  = false;
+
+        % ---- Channel bottom wall functions ----
+        if J == J_fluid_bottom
+            y_P      = 0.5 * (y(J_fluid_bottom) - y(J_fluid_bottom - 1)); 
+            eps_wall = Cmu^0.75 * k(I,J)^1.5 / (kappa * y_P + SMALL);
+            SP(I,J)  = -LARGE;
+            Su(I,J)  =  LARGE * eps_wall;
+            isWall   = true;
+        end
+
+        % ---- Channel top wall functions ----
+        if J == J_fluid_top
+            y_P      = 0.5 * (y(J_fluid_top + 1) - y(J_fluid_top)); 
+            eps_wall = Cmu^0.75 * k(I,J)^1.5 / (kappa * y_P + SMALL);
+            SP(I,J)  = -LARGE;
+            Su(I,J)  =  LARGE * eps_wall;
+            isWall   = true;
         end
 
         Su(I,J) = Su(I,J) * AREAw * AREAs;
@@ -123,9 +134,14 @@ for I = Istart:Iend
         aS(I,J) = max([ Fs, Ds + Fs/2, 0.]);
         aN(I,J) = max([-Fn, Dn - Fn/2, 0.]);
 
-        % Steady-state: no time derivative term
+        % Standard coefficient formulation
         aP(I,J) = aW(I,J) + aE(I,J) + aS(I,J) + aN(I,J) + Fe - Fw + Fn - Fs - SP(I,J);
         b(I,J)  = Su(I,J);
+        
+        % ---- Apply under-relaxation for fluid cells ----
+        global relax_eps % ensure access to global relax_eps
+        aP(I,J) = aP(I,J) / relax_eps;
+        b(I,J)  = b(I,J) + (1 - relax_eps) * aP(I,J) * eps(I,J);
     end
 end
 end

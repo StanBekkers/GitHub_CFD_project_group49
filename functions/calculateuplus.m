@@ -20,7 +20,7 @@ for I = 1:NPI+1
 
     % --- Bottom channel wall ---
     % y_P = distance from wall face to first fluid cell centre
-    y_P = y(J_fluid_bottom) - y(J_fluid_bottom - 1);
+    y_P = 0.5*(y(J_fluid_bottom) - y(J_fluid_bottom - 1));
     u_P = 0.5*(u(i, J_fluid_bottom) + u(i+1, J_fluid_bottom));
 
     if yplus1(I, J_fluid_bottom) < 11.63
@@ -41,7 +41,7 @@ for I = 1:NPI+1
     end
 
     % --- Top channel wall ---
-    y_P = y(J_fluid_top + 1) - y(J_fluid_top);
+    y_P = 0.5*(y(J_fluid_top + 1) - y(J_fluid_top));
     u_P = 0.5*(u(i, J_fluid_top) + u(i+1, J_fluid_top));
 
     if yplus2(I, J_fluid_top) < 11.63

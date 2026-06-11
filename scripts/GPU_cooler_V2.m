@@ -18,7 +18,7 @@ global x x_u y y_v u v pc p T rho mu Gamma Cp aP aE aW aN aS b d_u d_v  SMAX SAV
 global Q_chip x_chip_start x_chip_end y_chip_start y_chip_end heat_zone Ti Cmu
 global k eps mut mueff uplus yplus yplus1 yplus2 tw k_old eps_old
 global dudx dudy dvdx dvdy E E2
-global sigmak sigmaeps C1eps C2eps kappa ERough
+global sigmak sigmaeps C1eps C2eps kappa ERough relax_k relax_eps
 
 heat_zone = struct('x_start', {}, 'x_end', {}, 'q_wall', {}, 'R_copper', {});
     
@@ -27,18 +27,18 @@ NPI        = 4*48;        % number of grid cells in x-direction [-]
 NPJ        = 4*24;        % number of grid cells in y-direction [-]
 XMAX       = 0.15;      % width of the domain [m]
 YMAX       = 0.05;      % height of the domain [m]
-MAX_ITER   = 100;      % maximum number of outer iterations [-]
+MAX_ITER   = 1000;      % maximum number of outer iterations [-]
 U_ITER     = 1;         % number of Newton iterations for u equation [-]
 V_ITER     = 1;         % number of Newton iterations for u equation [-]
 PC_ITER    = 200;       % number of Newton iterations for pc equation [-]
 T_ITER     = 1;         % number of Newton iterations for T equation [-]
 K_ITER     = 1;         % number of Newton iterations for k equation [-]
 EPS_ITER   = 1;         % number of Newton iterations for eps equation [-]
-SMAXneeded = 1E-7;      % maximum accepted error in mass balance [kg/s]
-SAVGneeded = 1E-8;      % maximum accepted average error in mass balance [kg/s]
+SMAXneeded = 1E-6;      % maximum accepted error in mass balance [kg/s]
+SAVGneeded = 1E-7;      % maximum accepted average error in mass balance [kg/s]
 LARGE      = 1E30;      % arbitrary very large value [-]
 P_ATM      = 101000.;   % atmospheric pressure [Pa]
-U_IN       = 0.05;      % in flow velocity [m/s]
+U_IN       = 0.2;      % in flow velocity [m/s]
 NPRINT     = 1;         % number of iterations between printing output to screen
 
 % k-epsilon constants (standard)
@@ -62,9 +62,9 @@ A_core   = (0.4 * XMAX) * 1;     % m²
 A_right  = (0.3 * XMAX) * 1;     % m²
 
 % Total power per zone
-P_left   = 50;           % W - VRM/memory left
-P_core   = 300;          % W - GPU core
-P_right  = 50;           % W - VRM/memory right
+P_left   = 75;           % W - VRM/memory left
+P_core   = 350;          % W - GPU core
+P_right  = 75;           % W - VRM/memory right
 
 % Heat flux at copper surface [W/m²]
 % This is what actually enters the fluid after passing through copper
@@ -101,9 +101,26 @@ init();  %call initialization function
 
 iter = 1;
 % outer iteration loop
-while (iter <= MAX_ITER && SMAX > SMAXneeded && SAVG > SAVGneeded)
+while (iter <= MAX_ITER && (SMAX > SMAXneeded || SAVG > SAVGneeded))
     
     bound(); %call boundary function
+    % Turbulence: solve k then eps, clip to physical bounds
+    derivatives();
+    kcoeff();
+    for iter_k = 1:K_ITER
+        k = solve(k, b, aE, aW, aN, aS, aP);
+    end
+    k = max(k, 1e-10);   % prevent negative k
+
+    epscoeff();
+    for iter_eps = 1:EPS_ITER
+        eps = solve(eps, b, aE, aW, aN, aS, aP);
+    end
+    eps = max(eps, 1e-10); % prevent negative eps
+
+    rho(:,:) = 1000.0;
+    mu(1:NPI+2, 2:NPJ+1) = 1.0E-3;
+    viscosity();   % now builds mueff and Gamma on fresh mu
     
     ucoeff(); %call ucoeffe.m function to calculate the coefficients for u function
     for iter_u = 1:U_ITER
@@ -123,101 +140,12 @@ while (iter <= MAX_ITER && SMAX > SMAXneeded && SAVG > SAVGneeded)
     end
     
     velcorr(); % Correct pressure and velocity
-    
-  % Turbulence: solve k then eps, clip to physical bounds
-    derivatives();
-    kcoeff();
-    for iter_k = 1:K_ITER
-        k = solve(k, b, aE, aW, aN, aS, aP);
-    end
-    k = max(k, 1e-10);   % prevent negative k
-
-    epscoeff();
-    for iter_eps = 1:EPS_ITER
-        eps = solve(eps, b, aE, aW, aN, aS, aP);
-    end
-    eps = max(eps, 1e-10); % prevent negative eps
-
-    % Update turbulent viscosity and effective thermal conductivity
-    viscosity();
-
 
     Tcoeff(); %call Tcoeffe.m function to calculate the coefficients for T function
     for iter_T = 1:T_ITER
         T = solve(T, b, aE, aW, aN, aS, aP); %solve T function
     end
-    
-    % begin: density()==============================================================================
-    % For liquid water, density is constant at 1000 kg/m^3
-    rho(:,:) = 1000.0;
-    % end of density calculation======================================================================
-    
-    % begin: viscosity()==============================================================================
-    % Constant viscosity for water
-    mu(1:NPI+2,2:NPJ+1) = 1.0E-3;   
-    % end of viscosity calculation======================================================================
-    
-% begin: conductivity()===========================================================================
-    % Purpose: Calculate thermal conductivity (Water in channel, Solid Copper in walls and fins)
-    h_base_frac = 2/10;
-    l_base_frac = 3/10;
-    L_triangle = ceil(0.05*(NPI+1));
-    Start_L_base = ceil(l_base_frac*(NPI+1));
-    End_limit = ceil((1 - l_base_frac)*(NPI+1));   
-    H_domain = (NPJ+1);
-    Start_H_bottom = ceil(h_base_frac*H_domain);
-    Start_H_top = H_domain - Start_H_bottom;
-    H_triangle = ceil((1/4)*h_base_frac * H_domain);   % = 1/10 * H_domain
-    slope = H_triangle / L_triangle;
-
-    for I = 1:NPI+2
-        for J = 2:NPJ+1
-            % Default: Fluid (water) conductivity
-            Gamma(I,J) = 0.6 / Cp(I,J); 
-            
-            is_solid = false;
-            
-            % Check if cell falls inside the solid upper/lower wall boundaries
-            if (J < ceil(h_base_frac*(NPJ+1))) || (J > ceil((1-h_base_frac)*(NPJ+1)))
-                is_solid = true;
-            end
-            
-            % Check if cell falls inside the solid triangle mesh/fins
-            for offset = 0:L_triangle:(End_limit - Start_L_base - L_triangle)
-                Start_L_triangle = Start_L_base + offset;
-                End_L_triangle = Start_L_triangle + L_triangle;
-                
-                if (I >= Start_L_triangle && I <= End_L_triangle)
-                    i_shift = I - Start_L_triangle;
-                    lower_line = ceil(-i_shift*slope + H_triangle + Start_H_bottom);
-                    upper_line = ceil(-i_shift*slope + Start_H_top);
-                    
-                    mid       = floor((lower_line + upper_line) / 2);
-                    band_half = floor((upper_line - lower_line) / 6);
-
-                    lower_zigzag1 = lower_line + band_half;
-                    upper_zigzag1 = lower_line + 2*band_half;
-
-                    lower_zigzag2 = upper_line - 2*band_half;
-                    upper_zigzag2 = upper_line - band_half;
-
-                    if (J < lower_line) || (J > upper_line) || ...
-                       (J > lower_zigzag1 && J < upper_zigzag1) || ...
-                       (J > lower_zigzag2 && J < upper_zigzag2)
-                        is_solid = true;
-                    end
-                end
-            end
-            
-            % If cell is solid (wall or mesh fin), overwrite with Copper thermal properties
-            if is_solid
-                Gamma(I,J) = 401.0 / Cp(I,J); % Copper thermal conductivity: 401.0 W/m·K
-            end
-        end
-    end
-    % end of thermal conductivity calculation========================================================
-
-
+   
     % begin: printConv(iter)========================================================================
     % print temporary results
     if iter == 1
@@ -298,152 +226,48 @@ xlabel('x')
 ylabel('y')
 title('Pressure')
 
+%% Visualise turbulence quantities
 
-
-%%
-function [] = Tcoeff()
-% Purpose: To calculate the coefficients for the T equation.
-
-% constants
-global NPI NPJ 
-% variables
-global x x_u y y_v T Gamma SP Su F_u F_v relax_T Istart Iend Jstart Jend ...
-    b aE aW aN aS aP heat_zone Cp
-
-Istart = 2;
-Iend = NPI+1;
-Jstart = 2;
-Jend = NPJ+1;
-
-convect();
-
-for I = Istart:Iend
-    i = I;
-    for J = Jstart:Jend
-        j = J;
-        % Geometrical parameters: Areas of the cell faces
-        AREAw = y_v(j+1) - y_v(j); % = A(i,J) See fig. 6.2 or fig. 6.5
-        AREAe = AREAw;
-        AREAs = x_u(i+1) - x_u(i); % = A(I,j)
-        AREAn = AREAs;
-        
-        % The convective mass flux defined in eq. 5.8a
-        % note:  F = rho*u but Fw = (rho*u)w = rho*u*AREAw per definition.    
-        Fw = F_u(i,J)*AREAw;
-        Fe = F_u(i+1,J)*AREAe;
-        Fs = F_v(I,j)*AREAs;
-        Fn = F_v(I,j+1)*AREAn;
-        
-        % The transport by diffusion defined in eq. 5.8b
-        % note: D = mu/Dx but Dw = (mu/Dx)*AREAw per definition        
-        % The conductivity, Gamma, at the interface is calculated with the use of a harmonic mean.        
-        Dw = ((Gamma(I-1,J)*Gamma(I,J))/(Gamma(I-1,J)*(x(I) - x_u(i)) ...
-            + Gamma(I,J)*(x_u(i) - x(I-1))))*AREAw;
-        De = ((Gamma(I,J)*Gamma(I+1,J))/(Gamma(I,J)*(x(I+1) - x_u(i+1)) ...
-            + Gamma(I+1,J)*(x_u(i+1) - x(I))))*AREAe;
-        Ds = ((Gamma(I,J-1)*Gamma(I,J))/(Gamma(I,J-1)*(y(J) - y_v(j)) ...
-            + Gamma(I,J)*(y_v(j) - y(J-1))))*AREAs;
-        Dn = ((Gamma(I,J)*Gamma(I,J+1))/(Gamma(I,J)*(y(J+1) - y_v(j+1)) ...
-            + Gamma(I,J+1)*(y_v(j+1) - y(J))))*AREAn;
-        
-            % The source terms
-        SP(I,J) = 0.;
-        Su(I,J) = 0.;
-        
-        % --- Volumetric heat source: CPU/GPU chip ---
-       % Apply ONLY to the bottom-most fluid cell (J = ceil((NPJ+1)/6))
-        if J == ceil((NPJ+1)/6)
-            for idx = 1:length(heat_zone)
-                if (x(I) >= heat_zone(idx).x_start && x(I) <= heat_zone(idx).x_end)
-                    % Use cell width (dx) for a boundary surface flux, not cell volume
-                    dx = x_u(i+1) - x_u(i);
-                    Su(I,J) = Su(I,J) + (heat_zone(idx).q_wall * dx) / Cp(I,J);
-                end
-            end
-        end
-        % The coefficients (hybrid differencing scheme)
-        aW(I,j) = max([ Fw, Dw + Fw/2, 0.]);
-        aE(I,j) = max([-Fe, De - Fe/2, 0.]);
-        aS(I,j) = max([ Fs, Ds + Fs/2, 0.]);
-        aN(I,j) = max([-Fn, Dn - Fn/2, 0.]);
-        
-        
-        % transport of T through the baffles can be switched off by setting the coefficients to zero
-
-        %lower walls: 
-         if (J < ceil((NPJ+1)/6)) 
-            aE(I,j) = 0;
-            
-            aW(I,j) = 0;
-            aN(I,j) = 0;
-         end
-        %upper walls:
-        if (J > ceil(5*(NPJ+1)/6)) 
-            aE(I,j) = 0;
-            aS(I,j) = 0;
-            aW(I,j) = 0;
-            
-         end
-        
-        % =================================================================
-        % --- Conduction through internal Baffles ---
-
-        k_baffle = 401.0; % Copper: 401.0 W/m·K (or 205.0 for Aluminum)
-        Gamma_baffle = k_baffle / Cp(I,J);
-        
-        % Baffle #1 (Lower baffle)
-        if (I == ceil((NPI+1)/5)-1 && J < ceil((NPJ+1)/3))     % left of baffle #1
-            aE(I,J) = (Gamma_baffle * AREAe) / (x(I+1) - x(I));
-        end       
-        if (I == ceil((NPI+1)/5)   && J < ceil((NPJ+1)/3))     % right of baffle #1
-            aW(I,J) = (Gamma_baffle * AREAw) / (x(I) - x(I-1));
-        end
-        
-        % Baffle #2 (Upper baffle)
-        if (I == ceil(2*(NPI+1)/5)-1 && J > ceil(2*(NPJ+1)/3)) % left of baffle #2
-            aE(I,J) = (Gamma_baffle * AREAe) / (x(I+1) - x(I));
-        end       
-        if (I == ceil(2*(NPI+1)/5)   && J > ceil(2*(NPJ+1)/3)) % right of baffle #2
-            aW(I,J) = (Gamma_baffle * AREAw) / (x(I) - x(I-1));
-        end
-        % =================================================================
-        
-        % eq. 8.31 without time dependent terms (see also eq. 5.14):
-        aP(I,J) = aW(I,J) + aE(I,J) + aS(I,J) + aN(I,J) + Fe - Fw + Fn - Fs - SP(I,J);
-        
-        % Setting the source term equal to b       
-        b(I,J) = Su(I,J);
-        
-        % Introducing relaxation by eq. 6.36 . and putting also the last
-        % term on the right side into the source term b(i,J)        
-        aP(I,J) = aP(I,J) / relax_T;
-        b (I,J) = b (I,J) + (1 - relax_T)*aP(I,J)*T(I,J);
-        
-        % now the TDMA algorithm can be called to solve the equation.
-        % This is done in the next step of the main program.
-    end
-end
-end
-%% Visualize the Turbulence (k) profile
-[X, Y] = meshgrid(x, y);
-
-figure('Name', 'Turbulence Analysis');
-
-% Plot Turbulent Kinetic Energy (k)
-subplot(2,1,1)
-imagesc(x, y, k') 
+% --- Turbulent kinetic energy k ---
+figure
+imagesc(x, y, k')
 set(gca, 'YDir', 'normal')
 colorbar
-colormap('jet')
-xlabel('x [m]')
-ylabel('y [m]')
-title('Turbulent Kinetic Energy (k) [m^2/s^2]')
+xlabel('x [m]'); ylabel('y [m]')
+title('Turbulent Kinetic Energy k [m^2/s^2]')
+colormap(jet)
 
-% Plot Turbulent Viscosity (mut)
-subplot(2,1,2)
-imagesc(x, y, mut') 
+% --- Turbulent dissipation rate epsilon ---
+figure
+imagesc(x, y, eps')
 set(gca, 'YDir', 'normal')
 colorbar
-xlabel('x [m]')
-ylabel('y [m]')
-title('Turbulent Viscosity (\mu_t) [Pa\cdot s]')
+xlabel('x [m]'); ylabel('y [m]')
+title('Turbulent Dissipation Rate \epsilon [m^2/s^3]')
+colormap(jet)
+
+% --- Turbulent viscosity ratio mut/mu ---
+figure
+imagesc(x, y, (mut ./ (mu + 1e-30))')
+set(gca, 'YDir', 'normal')
+colorbar
+xlabel('x [m]'); ylabel('y [m]')
+title('Turbulent Viscosity Ratio \mu_t / \mu [-]')
+colormap(hot)
+
+% --- y+ distribution (bottom wall) ---
+h_base_frac = 2/10;
+J_bot = ceil(h_base_frac*(NPJ+1));
+figure
+plot(x(2:NPI+1), yplus(2:NPI+1, J_bot), 'b-', 'LineWidth', 1.5)
+hold on
+yline(11.63, 'r--', 'Sublayer limit y^+=11.63')
+yline(300,   'k--', 'Log-law upper limit y^+=300')
+xlabel('x [m]'); ylabel('y^+')
+title('Wall y^+ at Bottom Channel Wall')
+legend('y^+', 'Sublayer limit', 'Log-law upper limit')
+grid on
+
+
+
+

@@ -37,7 +37,7 @@ for I = 2:NPI
     i = I;
     for J = 2:NPJ
         j = J;
-        E2(I,J) = dudx(I,J)^2 + dvdy(I,J)^2 + ...
+        E2(I,J) = 2*(dudx(I,J)^2 + dvdy(I,J)^2) + ...
                   0.25*(E(i,j) + E(i+1,j) + E(i,j+1) + E(i+1,j+1));
     end
 end

@@ -1,15 +1,5 @@
 function [] = kcoeff()
 % Purpose: Calculate coefficients for the k (turbulent kinetic energy) equation.
-%
-% Geometry is read directly from the same parameters used in ucoeff.m and vcoeff.m.
-% The solid/fluid mask is computed identically — no separate geometry input needed.
-%
-% Wall treatment (channel walls and fin surfaces):
-%   k_wall = u_tau^2 / sqrt(Cmu)
-%   Applied via large-number Dirichlet: SP = -LARGE, Su = LARGE * k_wall
-%   This forces k_P → k_wall without floating-point blow-up.
-%
-% Interior cells: standard k-eps production/destruction source terms.
 
 % constants
 global NPI NPJ Cmu sigmak LARGE SMALL
@@ -26,7 +16,7 @@ convect();
 viscosity();
 calculateuplus();
 
-% ---- Geometry parameters (identical to ucoeff.m / vcoeff.m) ----
+% ---- Geometry parameters ----
 h_base_frac    = 2/10;
 l_base_frac    = 3/10;
 L_triangle     = ceil(0.05*(NPI+1));
@@ -40,6 +30,9 @@ slope          = H_triangle / L_triangle;
 
 J_fluid_bottom = ceil(h_base_frac*(NPJ+1));
 J_fluid_top    = ceil((1-h_base_frac)*(NPJ+1));
+
+% Effective turbulent diffusivity for k (includes molecular viscosity)
+Gamma_k = mu + mut / sigmak;
 
 for I = Istart:Iend
     i = I;
@@ -56,47 +49,18 @@ for I = Istart:Iend
         Fs = F_v(I,j)*AREAs;
         Fn = F_v(I,j+1)*AREAn;
 
-        % Diffusion with harmonic mean of mut (guards against zero with SMALL)
-        Dw = (mut(I-1,J)+SMALL)*(mut(I,J)+SMALL)/sigmak / ...
-             ((mut(I-1,J)+SMALL)*(x(I)-x_u(i)) + (mut(I,J)+SMALL)*(x_u(i)-x(I-1))) * AREAw;
-        De = (mut(I,J)+SMALL)*(mut(I+1,J)+SMALL)/sigmak / ...
-             ((mut(I,J)+SMALL)*(x(I+1)-x_u(i+1)) + (mut(I+1,J)+SMALL)*(x_u(i+1)-x(I))) * AREAe;
-        Ds = (mut(I,J-1)+SMALL)*(mut(I,J)+SMALL)/sigmak / ...
-             ((mut(I,J-1)+SMALL)*(y(J)-y_v(j)) + (mut(I,J)+SMALL)*(y_v(j)-y(J-1))) * AREAs;
-        Dn = (mut(I,J)+SMALL)*(mut(I,J+1)+SMALL)/sigmak / ...
-             ((mut(I,J)+SMALL)*(y(J+1)-y_v(j+1)) + (mut(I,J+1)+SMALL)*(y_v(j+1)-y(J))) * AREAn;
-
-        % Default: interior production - destruction
-        P_k     = 2.0 * mut(I,J) * E2(I,J);
-        SP(I,J) = -rho(I,J) * eps(I,J) / (k(I,J) + SMALL);
-        Su(I,J) = P_k;
-        isWall  = false;
-
-        % ---- Channel bottom wall ----
-        if J == J_fluid_bottom
-            u_tau   = sqrt(abs(tw(I, J_fluid_bottom)) / (rho(I, J_fluid_bottom) + SMALL));
-            k_wall  = u_tau^2 / (sqrt(Cmu) + SMALL);
-            SP(I,J) = -LARGE;
-            Su(I,J) =  LARGE * k_wall;
-            isWall  = true;
+        % ---- Solid check to deactivate k-transport in solid domains ----
+        is_solid = false;
+        if (J < J_fluid_bottom) || (J > J_fluid_top)
+            is_solid = true;
         end
-
-        % ---- Channel top wall ----
-        if J == J_fluid_top
-            u_tau   = sqrt(abs(tw(I, J_fluid_top)) / (rho(I, J_fluid_top) + SMALL));
-            k_wall  = u_tau^2 / (sqrt(Cmu) + SMALL);
-            SP(I,J) = -LARGE;
-            Su(I,J) =  LARGE * k_wall;
-            isWall  = true;
-        end
-
-        % ---- Fin / solid cells: same geometry as ucoeff.m ----
+        
         for offset = 0:L_triangle:(End_limit - Start_L_base - L_triangle)
             Start_L_triangle = Start_L_base + offset;
             End_L_triangle   = Start_L_triangle + L_triangle;
 
-            if (i >= Start_L_triangle) && (i <= End_L_triangle)
-                i_shift = i - Start_L_triangle;
+            if (I >= Start_L_triangle) && (I <= End_L_triangle)
+                i_shift = I - Start_L_triangle;
                 lower_line = ceil(-i_shift*slope + H_triangle + Start_H_bottom);
                 upper_line = ceil(-i_shift*slope + Start_H_top);
 
@@ -106,22 +70,62 @@ for I = Istart:Iend
                 lower_zigzag2 = upper_line - 2*band_half;
                 upper_zigzag2 = upper_line - band_half;
 
-                isSolid = (J < lower_line) || (J > upper_line) || ...
-                          (J > lower_zigzag1 && J < upper_zigzag1) || ...
-                          (J > lower_zigzag2 && J < upper_zigzag2);
+                isSolidGeometry = (J < lower_line) || (J > upper_line) || ...
+                                  (J > lower_zigzag1 && J < upper_zigzag1) || ...
+                                  (J > lower_zigzag2 && J < upper_zigzag2);
 
-                if isSolid && ~isWall
-                    % Fin surface: estimate u_tau from local laminar shear
-                    % (fin surface cells have near-zero velocity)
-                    u_loc   = abs(0.5*(u(i,J) + u(i+1,J)));
-                    y_P     = 0.5 * AREAw;
-                    u_tau   = sqrt(mu(I,J) * u_loc / (y_P * rho(I,J) + SMALL));
-                    k_wall  = u_tau^2 / (sqrt(Cmu) + SMALL);
-                    SP(I,J) = -LARGE;
-                    Su(I,J) =  LARGE * k_wall;
-                    isWall  = true;
+                if isSolidGeometry
+                    is_solid = true;
                 end
             end
+        end
+
+        if is_solid
+            % Enforce k = 0 in solids (Bypass relaxation)
+            SP(I,J) = -LARGE;
+            Su(I,J) = 0.0;
+            
+            aW(I,J) = 0.0;
+            aE(I,J) = 0.0;
+            aS(I,J) = 0.0;
+            aN(I,J) = 0.0;
+            aP(I,J) = LARGE;
+            b(I,J)  = Su(I,J);
+            continue;
+        end
+
+        % Transport by diffusion (harmonic mean of Gamma_k)
+        Dw = (Gamma_k(I-1,J)*Gamma_k(I,J)) / ...
+             ((Gamma_k(I-1,J))*(x(I)-x_u(i)) + (Gamma_k(I,J))*(x_u(i)-x(I-1))) * AREAw;
+        De = (Gamma_k(I,J)*Gamma_k(I+1,J)) / ...
+             ((Gamma_k(I,J))*(x(I+1)-x_u(i+1)) + (Gamma_k(I+1,J))*(x_u(i+1)-x(I))) * AREAe;
+        Ds = (Gamma_k(I,J-1)*Gamma_k(I,J)) / ...
+             ((Gamma_k(I,J-1))*(y(J)-y_v(j)) + (Gamma_k(I,J))*(y_v(j)-y(J-1))) * AREAs;
+        Dn = (Gamma_k(I,J)*Gamma_k(I,J+1)) / ...
+             ((Gamma_k(I,J))*(y(J+1)-y_v(j+1)) + (Gamma_k(I,J+1))*(y_v(j+1)-y(J))) * AREAn;
+
+        % Default: fluid interior production and destruction
+        P_k     = mut(I,J) * E2(I,J); 
+        SP(I,J) = -rho(I,J) * eps(I,J) / (k(I,J) + SMALL);
+        Su(I,J) = P_k;
+        isWall  = false;
+
+        % ---- Channel bottom wall functions ----
+        if J == J_fluid_bottom
+            u_tau   = sqrt(abs(tw(I, J_fluid_bottom)) / (rho(I, J_fluid_bottom) + SMALL));
+            k_wall  = u_tau^2 / (sqrt(Cmu) + SMALL);
+            SP(I,J) = -LARGE;
+            Su(I,J) =  LARGE * k_wall;
+            isWall  = true;
+        end
+
+        % ---- Channel top wall functions ----
+        if J == J_fluid_top
+            u_tau   = sqrt(abs(tw(I, J_fluid_top)) / (rho(I, J_fluid_top) + SMALL));
+            k_wall  = u_tau^2 / (sqrt(Cmu) + SMALL);
+            SP(I,J) = -LARGE;
+            Su(I,J) =  LARGE * k_wall;
+            isWall  = true;
         end
 
         Su(I,J) = Su(I,J) * AREAw * AREAs;
@@ -142,9 +146,14 @@ for I = Istart:Iend
             aN(I,J) = max([-Fn, Dn - Fn/2, 0.]);
         end
 
-        % Steady-state: no time derivative term (matches GPU_Cooler_V1 style)
+        % Standard coefficient formulation
         aP(I,J) = aW(I,J) + aE(I,J) + aS(I,J) + aN(I,J) + Fe - Fw + Fn - Fs - SP(I,J);
         b(I,J)  = Su(I,J);
+        
+        % ---- Apply under-relaxation for fluid cells ----
+        global relax_k % ensure access to global relax_k
+        aP(I,J) = aP(I,J) / relax_k;
+        b(I,J)  = b(I,J) + (1 - relax_k) * aP(I,J) * k(I,J);
     end
 end
 end

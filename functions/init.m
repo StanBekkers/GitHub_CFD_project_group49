@@ -7,7 +7,7 @@ global NPI NPJ LARGE U_IN XMAX YMAX
 global x x_u y y_v u v pc p T rho mu Gamma Cp b SP Su d_u d_v omega SMAX SAVG ...
     m_in m_out relax_u relax_v relax_pc relax_T relax_rho aP aE aW aN aS F_u F_v ...
     k eps uplus yplus yplus1 yplus2 tw ...
-    u_old v_old pc_old Ti T_old k_old eps_old Cmu mut mueff
+    u_old v_old pc_old Ti T_old k_old eps_old Cmu mut mueff relax_k relax_eps
     
 
 % begin: memalloc()=======================================================
@@ -157,9 +157,11 @@ u(NPI+1,2:NPJ+1) = 0.5*U_IN;
 % Setting the relaxation parameters
 relax_u   = 0.3;            % See eq. 6.36
 relax_v   = relax_u;        % See eq. 6.37
-relax_pc  = 0.3;  % See eq. 6.33
+relax_pc  = 0.2;  % See eq. 6.33
 relax_T   = 1.0;            % Relaxation factor for temperature
 relax_rho = 0.0;            % Relaxation factor for density
+relax_k = 0.3;
+relax_eps = 0.3;
 % end of initilization=====================================================
 end
 

@@ -8,8 +8,11 @@ global  u v T m_in m_out k eps y_v F_u Ti Cmu
 
 h_base_frac = 2/10;
 
-% Fixed temperature in Kelvin of the incoming fluid (293.15 K = 20°C)
-T(1, ceil(h_base_frac*(NPJ+1)):ceil((1-h_base_frac)*(NPJ+1))) = 293.15; 
+% Inlet: fluid cells get 293.15 K
+T(1, ceil(h_base_frac*(NPJ+1)):ceil((1-h_base_frac)*(NPJ+1))) = 293.15;
+% Inlet: wall cells also initialised to 293.15 K (copper will equilibrate)
+T(1, 1:ceil(h_base_frac*(NPJ+1))-1) = 293.15;
+T(1, ceil((1-h_base_frac)*(NPJ+1))+1:NPJ+2) = 293.15;
 
 % Setting the velocity at inlet
 u(2, ceil(h_base_frac*(NPJ+1)):ceil((1-h_base_frac)*(NPJ+1))) = U_IN;

@@ -4,7 +4,7 @@ function [] = vcoeff()
 % constants
 global NPI NPJ LARGE
 % variables
-global x x_u y y_v v p mu SP Su F_u F_v d_v relax_v Istart Iend Jstart Jend ...
+global x x_u y y_v v p mueff SP Su F_u F_v d_v relax_v Istart Iend Jstart Jend ...
     b aE aW aN aS aP
 
 Istart = 2;
@@ -30,10 +30,10 @@ for I = Istart:Iend
         Fn = ((F_v(I,j)   + F_v(I,j+1))/2)*AREAn;
         
         % eq. 6.11e-6.11h
-        Dw = ((mu(I-1,J-1) + mu(I,J-1) + mu(I-1,J) + mu(I,J))/(4*(x(I) - x(I-1))))*AREAw;
-        De = ((mu(I,J-1) + mu(I+1,J-1) + mu(I,J) + mu(I+1,J))/(4*(x(I+1) - x(I))))*AREAe;
-        Ds =  (mu(I,J-1)/(y_v(j) - y_v(j-1)))*AREAs;
-        Dn =  (mu(I,J)/(y_v(j+1) - y_v(j)))*AREAn;
+        Dw = ((mueff(I-1,J-1) + mueff(I,J-1) + mueff(I-1,J) + mueff(I,J))/(4*(x(I) - x(I-1))))*AREAw;
+        De = ((mueff(I,J-1) + mueff(I+1,J-1) + mueff(I,J) + mueff(I+1,J))/(4*(x(I+1) - x(I))))*AREAe;
+        Ds =  (mueff(I,J-1)/(y_v(j) - y_v(j-1)))*AREAs;
+        Dn =  (mueff(I,J)/(y_v(j+1) - y_v(j)))*AREAn;
         
         % The source terms
         SP(I,j) = 0.;
@@ -49,13 +49,15 @@ for I = Istart:Iend
         h_base_frac = 2/10;
         l_base_frac = 3/10;
         if (J < ceil(h_base_frac*(NPJ+1))) 
-            aW(I,j) = 0;
-            aE(I,j) = 0;
+            aW(I,j) = 0; aE(I,j) = 0;
+            aS(I,j) = 0; aN(I,j) = 0;
+            SP(I,j) = -LARGE;
         end
         % upper walls:
         if (J > ceil((1-h_base_frac)*(NPJ+1))) 
-            aW(I,j) = 0;
-            aE(I,j) = 0;
+            aW(I,j) = 0; aE(I,j) = 0;
+            aS(I,j) = 0; aN(I,j) = 0;
+            SP(I,j) = -LARGE;
         end
 
        L_triangle = ceil(0.05*(NPI+1));
