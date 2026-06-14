@@ -2,10 +2,11 @@ function [] = pccoeff()
 % Purpose: To calculate the coefficients for the pc equation. 
 
 % constants
-global NPI NPJ 
+global NPI NPJ LARGE 
 % variables
 global x_u y_v pc rho SP Su F_u F_v d_u d_v SMAX SAVG Istart Iend Jstart Jend ...
     b aE aW aN aS aP
+global h_base_frac l_base_frac
 
 Istart = 2;
 Iend = NPI+1;
@@ -17,6 +18,10 @@ SSUM = 0.;
 SAVG = 0.;
 	
 convect();
+
+layout_wall = Walls(Istart, Iend, Jstart, Jend, NPI, NPJ, h_base_frac);
+layout_fins = TriangleFin(Istart, Iend, Jstart, Jend, NPI, NPJ, l_base_frac, h_base_frac);
+cooler_layout = layout_wall | layout_fins;
 
 for I = Istart:Iend
     i = I;
@@ -47,6 +52,13 @@ for I = Istart:Iend
         
         aP(I,J) = aE(I,J) + aW(I,J) + aN(I,J) + aS(I,J) - SP(I,J);
         
+        if (cooler_layout(i,j) == 1)
+           aW(I,j) = 0; aE(I,j) = 0;
+           aS(I,j) = 0; aN(I,j) = 0;
+           SP(I,j) = -LARGE;
+        
+        end
+
         pc(I,J) = 0.;
         
         % note: At the points nearest the boundaries, some coefficients are

@@ -10,7 +10,7 @@ Iend = NPI+1;
 Jstart = 2;
 Jend = NPJ+1;
 convect();
-h_base_frac = 2/10;
+global h_base_frac 
 % External air properties
 h_air = 15.0; % Convective heat transfer coefficient to outside air [W/m^2K]
 T_air = 293.15; % Ambient air temperature [K] (20 degrees C)

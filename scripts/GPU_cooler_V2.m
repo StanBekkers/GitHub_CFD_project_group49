@@ -23,11 +23,11 @@ global sigmak sigmaeps C1eps C2eps kappa ERough relax_k relax_eps
 heat_zone = struct('x_start', {}, 'x_end', {}, 'q_wall', {}, 'R_copper', {});
     
 % constants
-NPI        = 4*48;        % number of grid cells in x-direction [-]
-NPJ        = 4*24;        % number of grid cells in y-direction [-]
+NPI        = 4*48;      % number of grid cells in x-direction [-]
+NPJ        = 4*24;      % number of grid cells in y-direction [-]
 XMAX       = 0.15;      % width of the domain [m]
 YMAX       = 0.05;      % height of the domain [m]
-MAX_ITER   = 500;      % maximum number of outer iterations [-]
+MAX_ITER   = 100;       % maximum number of outer iterations [-]
 U_ITER     = 1;         % number of Newton iterations for u equation [-]
 V_ITER     = 1;         % number of Newton iterations for u equation [-]
 PC_ITER    = 200;       % number of Newton iterations for pc equation [-]
@@ -38,7 +38,7 @@ SMAXneeded = 1E-6;      % maximum accepted error in mass balance [kg/s]
 SAVGneeded = 1E-7;      % maximum accepted average error in mass balance [kg/s]
 LARGE      = 1E30;      % arbitrary very large value [-]
 P_ATM      = 101000.;   % atmospheric pressure [Pa]
-U_IN       = 0.2;      % in flow velocity [m/s]
+U_IN       = 0.2;       % in flow velocity [m/s]
 NPRINT     = 1;         % number of iterations between printing output to screen
 
 % k-epsilon constants (standard)

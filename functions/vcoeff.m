@@ -6,11 +6,19 @@ global NPI NPJ LARGE
 % variables
 global x x_u y y_v v p mueff SP Su F_u F_v d_v relax_v Istart Iend Jstart Jend ...
     b aE aW aN aS aP
+global h_base_frac l_base_frac
 
 Istart = 2;
 Iend = NPI+1;
 Jstart = 3;
 Jend = NPJ+1;
+
+h_base_frac = 2/10;
+l_base_frac = 3/10;
+
+layout_wall = Walls(Istart, Iend, Jstart, Jend, NPI, NPJ, h_base_frac);
+layout_fins = TriangleFin(Istart, Iend, Jstart, Jend, NPI, NPJ, l_base_frac, h_base_frac);
+cooler_layout = layout_wall | layout_fins;
 
 convect();
 for I = Istart:Iend
@@ -44,74 +52,11 @@ for I = Istart:Iend
         aE(I,j) = max([-Fe, De - Fe/2, 0.]);
         aS(I,j) = max([ Fs, Ds + Fs/2, 0.]);
         aN(I,j) = max([-Fn, Dn - Fn/2, 0.]);
-        
-        % lower walls: 
-        h_base_frac = 2/10;
-        l_base_frac = 3/10;
-        if (J < ceil(h_base_frac*(NPJ+1))) 
-            aW(I,j) = 0; aE(I,j) = 0;
-            aS(I,j) = 0; aN(I,j) = 0;
-            SP(I,j) = -LARGE;
-        end
-        % upper walls:
-        if (J > ceil((1-h_base_frac)*(NPJ+1))) 
-            aW(I,j) = 0; aE(I,j) = 0;
-            aS(I,j) = 0; aN(I,j) = 0;
-            SP(I,j) = -LARGE;
-        end
 
-       L_triangle = ceil(0.05*(NPI+1));
-Start_L_base = ceil(l_base_frac*(NPI+1));
-End_limit = ceil((1 - l_base_frac)*(NPI+1));   
-
-H_domain = (NPJ+1);
-Start_H_bottom = ceil(h_base_frac*H_domain);
-Start_H_top = H_domain - Start_H_bottom;
-H_triangle = ceil((1/4)*h_base_frac * H_domain);   % = 1/10 * H_domain
-slope = H_triangle / L_triangle;
-
-        for offset = 0:L_triangle:(End_limit - Start_L_base - L_triangle)
-            Start_L_triangle = Start_L_base + offset;
-            End_L_triangle   = Start_L_triangle + L_triangle;
-
-            if (i >= Start_L_triangle) && (i <= End_L_triangle)
-
-    i_shift = i - Start_L_triangle;
-
-    lower_line = ceil(-i_shift*slope + H_triangle + Start_H_bottom);
-    upper_line = ceil(-i_shift*slope + Start_H_top);
-
-mid       = floor((lower_line + upper_line) / 2);
-band_half = floor((upper_line - lower_line) / 6);
-
-lower_zigzag1 = lower_line + band_half;
-upper_zigzag1 = lower_line + 2*band_half;
-
-lower_zigzag2 = upper_line - 2*band_half;
-upper_zigzag2 = upper_line - band_half;
-
-    if (J < lower_line)
-        aW(I,j) = 0; aE(I,j) = 0;
-        aS(I,j) = 0; aN(I,j) = 0;
-        SP(I,j) = -LARGE;
-    end
-    if (J > upper_line)
-        aW(I,j) = 0; aE(I,j) = 0;
-        aS(I,j) = 0; aN(I,j) = 0;
-        SP(I,j) = -LARGE;
-    end
-    if (J > lower_zigzag1 && J < upper_zigzag1)
-        aW(I,j) = 0; aE(I,j) = 0;
-        aS(I,j) = 0; aN(I,j) = 0;
-        SP(I,j) = -LARGE;
-    end
-    if (J > lower_zigzag2 && J < upper_zigzag2)
-        aW(I,j) = 0; aE(I,j) = 0;
-        aS(I,j) = 0; aN(I,j) = 0;
-        SP(I,j) = -LARGE;
-    end
-
-end
+        if (cooler_layout(i,j) == 1)
+           aW(I,j) = 0; aE(I,j) = 0;
+           aS(I,j) = 0; aN(I,j) = 0;
+           SP(I,j) = -LARGE;
         end
 
         % eq. 8.31 without time dependent terms

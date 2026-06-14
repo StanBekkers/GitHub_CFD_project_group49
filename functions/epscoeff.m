@@ -6,6 +6,7 @@ global NPI NPJ Cmu LARGE SMALL sigmaeps kappa C1eps C2eps
 % variables
 global x x_u y y_v SP Su F_u F_v mut rho Istart Iend ...
     Jstart Jend b aE aW aN aS aP k eps eps_old E2 mu
+global h_base_frac l_base_frac
 
 Istart = 2;
 Iend   = NPI+1;
@@ -15,20 +16,22 @@ Jend   = NPJ+1;
 convect();
 viscosity();
 
-% ---- Geometry parameters ----
-h_base_frac    = 2/10;
-l_base_frac    = 3/10;
-L_triangle     = ceil(0.05*(NPI+1));
-Start_L_base   = ceil(l_base_frac*(NPI+1));
-End_limit      = ceil((1 - l_base_frac)*(NPI+1));
-H_domain       = (NPJ+1);
-Start_H_bottom = ceil(h_base_frac*H_domain);
-Start_H_top    = H_domain - Start_H_bottom;
-H_triangle     = ceil((1/4)*h_base_frac * H_domain);
-slope          = H_triangle / L_triangle;
+layout_wall = Walls(Istart, Iend, Jstart, Jend, NPI, NPJ, h_base_frac);
+layout_fins = TriangleFin(Istart, Iend, Jstart, Jend, NPI, NPJ, l_base_frac, h_base_frac);
+cooler_layout = layout_wall | layout_fins;
 
-J_fluid_bottom = ceil(h_base_frac*(NPJ+1));
-J_fluid_top    = ceil((1-h_base_frac)*(NPJ+1));
+%Find interfaces 
+di = diff(cooler_layout,1,1);
+dj = diff(cooler_layout,1,2);
+solid_above = (di == -1);
+solid_below = (di == 1);
+solid_left  = (dj == -1);
+solid_right = (dj == 1);
+
+interfaces = false(size(cooler_layout));
+interfaces(1:end-1,:) = (di ~= 0);
+interfaces(:,1:end-1) = interfaces(:,1:end-1) | (dj ~= 0);
+
 
 % Effective turbulent diffusivity for eps (includes molecular viscosity)
 Gamma_eps = mu + mut / sigmaeps;
@@ -48,36 +51,9 @@ for I = Istart:Iend
         Fs = F_v(I,j)*AREAs;
         Fn = F_v(I,j+1)*AREAn;
 
-        % ---- Solid check to deactivate eps-transport in solid domains ----
-        is_solid = false;
-        if (J < J_fluid_bottom) || (J > J_fluid_top)
+          if (cooler_layout(i,j) == 1)
             is_solid = true;
-        end
-        
-        for offset = 0:L_triangle:(End_limit - Start_L_base - L_triangle)
-            Start_L_triangle = Start_L_base + offset;
-            End_L_triangle   = Start_L_triangle + L_triangle;
-
-            if (I >= Start_L_triangle) && (I <= End_L_triangle)
-                i_shift = I - Start_L_triangle;
-                lower_line = ceil(-i_shift*slope + H_triangle + Start_H_bottom);
-                upper_line = ceil(-i_shift*slope + Start_H_top);
-
-                band_half     = floor((upper_line - lower_line) / 6);
-                lower_zigzag1 = lower_line + band_half;
-                upper_zigzag1 = lower_line + 2*band_half;
-                lower_zigzag2 = upper_line - 2*band_half;
-                upper_zigzag2 = upper_line - band_half;
-
-                isSolidGeometry = (J < lower_line) || (J > upper_line) || ...
-                                  (J > lower_zigzag1 && J < upper_zigzag1) || ...
-                                  (J > lower_zigzag2 && J < upper_zigzag2);
-
-                if isSolidGeometry
-                    is_solid = true;
-                end
-            end
-        end
+          end
 
         if is_solid
             % Enforce eps floor in solids (Bypass relaxation)
@@ -109,7 +85,7 @@ for I = Istart:Iend
         isWall  = false;
 
         % ---- Channel bottom wall functions ----
-        if J == J_fluid_bottom
+        if (solid_above(i,j) == true)
             y_P      = 0.5 * (y(J_fluid_bottom) - y(J_fluid_bottom - 1)); 
             eps_wall = Cmu^0.75 * k(I,J)^1.5 / (kappa * y_P + SMALL);
             SP(I,J)  = -LARGE;
@@ -118,7 +94,7 @@ for I = Istart:Iend
         end
 
         % ---- Channel top wall functions ----
-        if J == J_fluid_top
+        if (solid_below(i,j) == true)
             y_P      = 0.5 * (y(J_fluid_top + 1) - y(J_fluid_top)); 
             eps_wall = Cmu^0.75 * k(I,J)^1.5 / (kappa * y_P + SMALL);
             SP(I,J)  = -LARGE;

@@ -1,18 +1,55 @@
 function [] = ucoeff()
 % Purpose: To calculate the coefficients for the u equation.
 
-% constants
-global NPI NPJ LARGE 
+% Constants
+global NPI NPJ LARGE XMAX YMAX
 % variables
 global x x_u y y_v u p mueff SP Su F_u F_v d_u relax_u Istart Iend Jstart Jend ...
       b aE aW aN aS aP
+global h_base_frac l_base_frac
  
+h_base_frac = 2/10;
+l_base_frac = 3/10;
+
 Istart = 3;
 Iend = NPI+1;
 Jstart = 2;
 Jend = NPJ+1;
 
 convect();
+layout_wall = Walls(Istart, Iend, Jstart, Jend, NPI, NPJ, h_base_frac);
+layout_fins = TriangleFin(Istart, Iend, Jstart, Jend, NPI, NPJ, l_base_frac, h_base_frac);
+cooler_layout = layout_wall | layout_fins;   % or use + and threshold if needed
+
+% cell_area = (XMAX*YMAX)/(NPI*NPJ);
+% num_ones = sum(cooler_layout(:));
+% fin_area = num_ones* cell_area
+% 
+% figure
+% subplot(1,2,1)
+% imagesc(layout_wall', [0 1])
+% colormap(gray)
+% axis equal tight
+% colorbar
+% title('layout\_wall (j,i)')
+% xlabel('j'); ylabel('i')
+% 
+% subplot(1,2,2)
+% imagesc(layout_fins', [0 1])
+% colormap(gray)
+% axis equal tight
+% colorbar
+% title('layout\_fins (j,i)')
+% xlabel('j'); ylabel('i')
+% 
+% figure
+% imagesc(cooler_layout', [0 1])
+% colormap(gray)
+% axis equal tight
+% colorbar
+% title('combined layout (j,i)')
+% xlabel('j'); ylabel('i')
+
 for I = Istart:Iend
     i = I;
     for J = Jstart:Jend
@@ -41,67 +78,10 @@ for I = Istart:Iend
         SP(i,J) = 0.;
         Su(i,J) = 0.;
         
-         % u can be fixed to zero by setting SP to a very large value
-
-         % lower walls: 
-         h_base_frac = 2/10;
-         l_base_frac = 3/10;
-          if (J < ceil(h_base_frac*(NPJ+1)))
-            SP(i,J) = -LARGE;
-          end
-         % upper walls: 
-          if (J > ceil((1-h_base_frac)*(NPJ+1)))
-            SP(i,J) = -LARGE;
-          end
-
-L_triangle = ceil(0.05*(NPI+1));
-Start_L_base = ceil(l_base_frac*(NPI+1));
-End_limit = ceil((1 - l_base_frac)*(NPI+1));   
-
-H_domain = (NPJ+1);
-Start_H_bottom = ceil(h_base_frac*H_domain);
-Start_H_top = H_domain - Start_H_bottom;
-H_triangle = ceil((1/4)*h_base_frac * H_domain);   % = 1/10 * H_domain
-slope = H_triangle / L_triangle;
-
-for offset = 0:L_triangle:(End_limit - Start_L_base - L_triangle)
-    Start_L_triangle = Start_L_base + offset;
-    End_L_triangle   = Start_L_triangle + L_triangle;
-
-    if (i >= Start_L_triangle) && (i <= End_L_triangle)
-
-        i_shift = i - Start_L_triangle;
-        slope = H_triangle / L_triangle;
-        lower_line = ceil(-i_shift*slope + H_triangle + Start_H_bottom);
-        upper_line = ceil(-i_shift*slope + Start_H_top);
-        
-mid       = floor((lower_line + upper_line) / 2);
-band_half = floor((upper_line - lower_line) / 6);
-
-lower_zigzag1 = lower_line + band_half;
-upper_zigzag1 = lower_line + 2*band_half;
-
-lower_zigzag2 = upper_line - 2*band_half;
-upper_zigzag2 = upper_line - band_half;
-
-        if (J < lower_line)
+         % u can be fixed to zero by setting SP to a very large value    
+        if (cooler_layout(i,j) == 1)
             SP(i,J) = -LARGE;
         end
-        if (J > upper_line)
-            SP(i,J) = -LARGE;
-        end
-
-        if (J > lower_zigzag1 && J < upper_zigzag1)
-            SP(i,J) = -LARGE;
-        end
-        if (J > lower_zigzag2 && J < upper_zigzag2)
-            SP(i,J) = -LARGE;
-        end
-
-
-    end
-end
-
 
         % The coefficients (hybrid differencing scheme)
         aW(i,J) = max([ Fw, Dw + Fw/2, 0.]);
@@ -132,6 +112,8 @@ end
         % in the next step of the main program. 
     end
 end
+
+
 
 end
 
