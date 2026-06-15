@@ -18,37 +18,37 @@ Jend = NPJ+1;
 
 convect();
 layout_wall = Walls(Istart, Iend, Jstart, Jend, NPI, NPJ, h_base_frac);
-layout_fins = TriangleFin(Istart, Iend, Jstart, Jend, NPI, NPJ, l_base_frac, h_base_frac);
-cooler_layout = layout_wall | layout_fins;   % or use + and threshold if needed
+layout_fins = RectangularFin(Istart, Iend, Jstart, Jend, NPI, NPJ, l_base_frac, h_base_frac);
+cooler_layout = layout_wall | layout_fins;   
 
-% cell_area = (XMAX*YMAX)/(NPI*NPJ);
-% num_ones = sum(cooler_layout(:));
-% fin_area = num_ones* cell_area
-% 
-% figure
-% subplot(1,2,1)
-% imagesc(layout_wall', [0 1])
-% colormap(gray)
-% axis equal tight
-% colorbar
-% title('layout\_wall (j,i)')
-% xlabel('j'); ylabel('i')
-% 
-% subplot(1,2,2)
-% imagesc(layout_fins', [0 1])
-% colormap(gray)
-% axis equal tight
-% colorbar
-% title('layout\_fins (j,i)')
-% xlabel('j'); ylabel('i')
-% 
-% figure
-% imagesc(cooler_layout', [0 1])
-% colormap(gray)
-% axis equal tight
-% colorbar
-% title('combined layout (j,i)')
-% xlabel('j'); ylabel('i')
+cell_area = (XMAX*YMAX)/(NPI*NPJ);
+num_ones = sum(cooler_layout(:));
+fin_area = num_ones* cell_area
+
+figure
+subplot(1,2,1)
+imagesc(layout_wall', [0 1])
+colormap(gray)
+axis equal tight
+colorbar
+title('layout\_wall (j,i)')
+xlabel('j'); ylabel('i')
+
+subplot(1,2,2)
+imagesc(layout_fins', [0 1])
+colormap(gray)
+axis equal tight
+colorbar
+title('layout\_fins (j,i)')
+xlabel('j'); ylabel('i')
+
+figure
+imagesc(cooler_layout', [0 1])
+colormap(gray)
+axis equal tight
+colorbar
+title('combined layout (j,i)')
+xlabel('j'); ylabel('i')
 
 for I = Istart:Iend
     i = I;

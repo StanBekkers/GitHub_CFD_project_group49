@@ -40,7 +40,7 @@ k = 0;
                 i_shift = I - Start_L_triangle;
 
                 lower_line = ceil(s*-i_shift*slope + H_triangle_bottom + Start_H_bottom);
-                upper_line = ceil(s*-i_shift*slope + Start_H_top - H_triangle_top);
+                upper_line = floor(s*-i_shift*slope + Start_H_top - H_triangle_top);
 
                 Channel_Height = floor((Start_H_top - Start_H_bottom - 3*H_triangle)/3);  
                 ZigZag_relative_Height = H_triangle + Channel_Height;

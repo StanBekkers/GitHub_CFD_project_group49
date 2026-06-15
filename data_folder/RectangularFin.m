@@ -22,7 +22,7 @@ for I = Istart:Iend
                 Rectangle_relative_Height = H_rectangle + Channel_Height;
                 
                 bottom_wall_rectangle = Start_H_bottom + H_rectangle; 
-                top_wall_rectangle = Start_H_top - H_rectangle;
+                top_wall_rectangle = Start_H_top - H_rectangle+1;
 
                 lower_rectangle1 = Start_H_bottom + Rectangle_relative_Height;
                 upper_rectangle1 = Start_H_bottom + Rectangle_relative_Height + H_rectangle;
