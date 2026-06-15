@@ -4,7 +4,7 @@ function [] = Tcoeff()
 global NPI NPJ YMAX XMAX LARGE SMALL
 % variables
 global x x_u y y_v T Gamma SP Su F_u F_v relax_T Istart Iend Jstart Jend ...
-b aE aW aN aS aP Cp l_base_frac
+b aE aW aN aS aP Cp l_base_frac P_core
 
 Istart = 2;
 Iend = NPI+1;
@@ -15,9 +15,8 @@ convect();
 % =========================================================================
 % --- 2D PLANAR HEAT SOURCE PARAMETERS (Z-DIRECTION) ---
 % =========================================================================
-P_core = 150.0; % Total GPU Thermal Power (Watts)
-
 % Define chip active footprint centered over the baffle geometry
+
 x_start = l_base_frac * XMAX;
 x_end   = (1 - l_base_frac) * XMAX;
 

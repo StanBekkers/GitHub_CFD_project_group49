@@ -18,7 +18,7 @@ global x x_u y y_v u v pc p T rho mu Gamma Cp aP aE aW aN aS b d_u d_v  SMAX SAV
 global Q_chip x_chip_start x_chip_end y_chip_start y_chip_end heat_zone Ti Cmu
 global k eps mut mueff uplus yplus yplus1 yplus2 tw k_old eps_old
 global dudx dudy dvdx dvdy E E2
-global sigmak sigmaeps C1eps C2eps kappa ERough relax_k relax_eps
+global sigmak sigmaeps C1eps C2eps kappa ERough relax_k relax_eps P_core
 
 % --- NEW GLOBAL GEOMETRY SELECTION ---
 global h_base_frac l_base_frac cooler_layout J_fluid_bottom J_fluid_top
@@ -34,7 +34,7 @@ NPI        = 4*48;      % number of grid cells in x-direction [-]
 NPJ        = 4*24;      % number of grid cells in y-direction [-]
 XMAX       = 0.15;      % width of the domain [m]
 YMAX       = 0.05;      % height of the domain [m]
-MAX_ITER   = 750;       % maximum number of outer iterations [-]
+MAX_ITER   = 500;       % maximum number of outer iterations [-]
 U_ITER     = 1;         % number of Newton iterations for u equation [-]
 V_ITER     = 1;         % number of Newton iterations for u equation [-]
 PC_ITER    = 200;       % number of Newton iterations for pc equation [-]
@@ -61,12 +61,12 @@ ERough     = 9.793;     % roughness constant (smooth wall)
 
 % Copper plate properties
 k_copper = 401;          % W/m·K
-t_copper = 0.003;        % m - 3mm thick copper baseplate
+t_copper = 0.002;        % m - 3mm thick copper baseplate
 
 % --- ONE CENTRAL HEAT ZONE IN THE CORE ---
 % The core spans the area of the central baffle geometries (0.3 * XMAX to 0.7 * XMAX)
 A_core   = ((1 - 2*l_base_frac) * XMAX) * 0.015;     % m² active area
-P_core   = 300;                                  % Total power in Watts (Set to 150W for real thermal load)
+P_core   = 450;                                  % Total power in Watts (Set to 150W for real thermal load)
 
 % Heat flux at copper surface [W/m²]
 q_flux_core  = P_core  / A_core;
