@@ -6,19 +6,14 @@ global NPI NPJ LARGE
 % variables
 global x x_u y y_v v p mueff SP Su F_u F_v d_v relax_v Istart Iend Jstart Jend ...
     b aE aW aN aS aP
-global h_base_frac l_base_frac
+
+% --- CONNECT TO GEOMETRY GLOBALS ---
+global cooler_layout
 
 Istart = 2;
 Iend = NPI+1;
 Jstart = 3;
 Jend = NPJ+1;
-
-h_base_frac = 2/10;
-l_base_frac = 3/10;
-
-layout_wall = Walls(Istart, Iend, Jstart, Jend, NPI, NPJ, h_base_frac);
-layout_fins = TriangleFin(Istart, Iend, Jstart, Jend, NPI, NPJ, l_base_frac, h_base_frac);
-cooler_layout = layout_wall | layout_fins;
 
 convect();
 for I = Istart:Iend
@@ -53,14 +48,16 @@ for I = Istart:Iend
         aS(I,j) = max([ Fs, Ds + Fs/2, 0.]);
         aN(I,j) = max([-Fn, Dn - Fn/2, 0.]);
 
-        if (cooler_layout(i,j) == 1)
+        % --- CORRECTED SOLID BOUNDARY CHECK FOR V-VELOCITY ---
+        % Force v to zero if either the bottom (J-1) or top (J) cell is solid
+        if (cooler_layout(I,J-1) == 1 || cooler_layout(I,J) == 1)
            aW(I,j) = 0; aE(I,j) = 0;
            aS(I,j) = 0; aN(I,j) = 0;
            SP(I,j) = -LARGE;
         end
 
         % eq. 8.31 without time dependent terms
-        aP(I,j) = aW(I,j) + aE(I,j) + aS(I,j) + aN(I,j) + Fe - Fw + Fn - Fs - SP(I,J);
+        aP(I,j) = aW(I,j) + aE(I,j) + aS(I,j) + aN(I,j) + Fe - Fw + Fn - Fs - SP(I,j);
         
         d_v(I,j) = AREAs*relax_v/aP(I,j);
         
