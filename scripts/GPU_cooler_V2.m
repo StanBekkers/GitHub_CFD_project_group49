@@ -20,6 +20,13 @@ global k eps mut mueff uplus yplus yplus1 yplus2 tw k_old eps_old
 global dudx dudy dvdx dvdy E E2
 global sigmak sigmaeps C1eps C2eps kappa ERough relax_k relax_eps
 
+% --- NEW GLOBAL GEOMETRY SELECTION ---
+global h_base_frac l_base_frac cooler_layout J_fluid_bottom J_fluid_top
+
+h_base_frac = 2/10;       % Height fraction of the baseplate walls
+l_base_frac = 3/10;       % Length fraction where baffles reside
+fin_type    = 'rectangular'; % Baffle type: Choose 'triangle' or 'rectangular'
+
 heat_zone = struct('x_start', {}, 'x_end', {}, 'q_wall', {}, 'R_copper', {});
     
 % constants
@@ -27,15 +34,15 @@ NPI        = 4*48;      % number of grid cells in x-direction [-]
 NPJ        = 4*24;      % number of grid cells in y-direction [-]
 XMAX       = 0.15;      % width of the domain [m]
 YMAX       = 0.05;      % height of the domain [m]
-MAX_ITER   = 100;       % maximum number of outer iterations [-]
+MAX_ITER   = 750;       % maximum number of outer iterations [-]
 U_ITER     = 1;         % number of Newton iterations for u equation [-]
 V_ITER     = 1;         % number of Newton iterations for u equation [-]
 PC_ITER    = 200;       % number of Newton iterations for pc equation [-]
 T_ITER     = 1;         % number of Newton iterations for T equation [-]
 K_ITER     = 1;         % number of Newton iterations for k equation [-]
 EPS_ITER   = 1;         % number of Newton iterations for eps equation [-]
-SMAXneeded = 1E-6;      % maximum accepted error in mass balance [kg/s]
-SAVGneeded = 1E-7;      % maximum accepted average error in mass balance [kg/s]
+SMAXneeded = 1E-5;      % maximum accepted error in mass balance [kg/s]
+SAVGneeded = 1E-6;      % maximum accepted average error in mass balance [kg/s]
 LARGE      = 1E30;      % arbitrary very large value [-]
 P_ATM      = 101000.;   % atmospheric pressure [Pa]
 U_IN       = 0.2;       % in flow velocity [m/s]
@@ -56,48 +63,41 @@ ERough     = 9.793;     % roughness constant (smooth wall)
 k_copper = 401;          % W/m·K
 t_copper = 0.003;        % m - 3mm thick copper baseplate
 
-% Contact area per zone (2D: width * unit depth of 1m)
-A_left   = (0.3 * XMAX) * 1;     % m²
-A_core   = (0.4 * XMAX) * 1;     % m²
-A_right  = (0.3 * XMAX) * 1;     % m²
-
-% Total power per zone
-P_left   = 75;           % W - VRM/memory left
-P_core   = 350;          % W - GPU core
-P_right  = 75;           % W - VRM/memory right
+% --- ONE CENTRAL HEAT ZONE IN THE CORE ---
+% The core spans the area of the central baffle geometries (0.3 * XMAX to 0.7 * XMAX)
+A_core   = ((1 - 2*l_base_frac) * XMAX) * 0.015;     % m² active area
+P_core   = 300;                                  % Total power in Watts (Set to 150W for real thermal load)
 
 % Heat flux at copper surface [W/m²]
-% This is what actually enters the fluid after passing through copper
-q_flux_left  = P_left  / A_left;     % ~174  W/m²
-q_flux_core  = P_core  / A_core;     % ~781  W/m²
-q_flux_right = P_right / A_right;    % ~174  W/m²
+q_flux_core  = P_core  / A_core;
 
-% Copper thermal resistance per zone [K/W]
-% R = t / (k * A) - tells you temperature drop across copper
-R_left   = t_copper / (k_copper * A_left);
+% Copper thermal resistance [K/W]
 R_core   = t_copper / (k_copper * A_core);
-R_right  = t_copper / (k_copper * A_right);
 
-% Expected temperature drop across copper plate [K]
-% Just for reference/sanity check - printed but not used in solver
-dT_copper_left  = P_left  * R_left;
-dT_copper_core  = P_core  * R_core;
-dT_copper_right = P_right * R_right;
+% Expected temperature drop across copper plate [K] (Reference only)
+dT_copper_core = P_core * R_core;
+fprintf('Copper dT - Core: %.2f K\n', dT_copper_core);
 
-fprintf('Copper dT - Left: %.3f K, Core: %.2f K, Right: %.3f K\n', ...
-        dT_copper_left, dT_copper_core, dT_copper_right);
+% Store only ONE central core heat zone matching the baffle geometry span
+heat_zone(1) = struct('x_start', l_base_frac*XMAX,    'x_end', (1-l_base_frac)*XMAX, ...
+                      'q_wall',  q_flux_core,         'R_copper', R_core);
 
-% Store zones - note q_wall not q_vol, entering as boundary flux
-heat_zone(1) = struct('x_start', 0.0,         'x_end', 0.3*XMAX, ...
-                      'q_wall',  q_flux_left,  'R_copper', R_left);
-
-heat_zone(2) = struct('x_start', 0.3*XMAX,    'x_end', 0.7*XMAX, ...
-                      'q_wall',  q_flux_core,  'R_copper', R_core);
-
-heat_zone(3) = struct('x_start', 0.7*XMAX,    'x_end', 1.0*XMAX, ...
-                      'q_wall',  q_flux_right, 'R_copper', R_right);
 %% main calculations
 init();  %call initialization function
+
+% --- GENERATE UNIFIED LAYOUT ONCE ---
+I_full = 1; Iend_full = NPI+2;
+J_full = 1; Jend_full = NPJ+2;
+layout_wall = Walls(I_full, Iend_full, J_full, Jend_full, NPI, NPJ, h_base_frac);
+
+if strcmp(fin_type, 'triangle')
+    layout_fins = TriangleFin(I_full, Iend_full, J_full, Jend_full, NPI, NPJ, l_base_frac, h_base_frac);
+elseif strcmp(fin_type, 'rectangular')
+    layout_fins = RectangularFin(I_full, Iend_full, J_full, Jend_full, NPI, NPJ, l_base_frac, h_base_frac);
+else
+    error('Invalid fin_type specified. Select either ''triangle'' or ''rectangular''.');
+end
+cooler_layout = layout_wall | layout_fins;
 
 iter = 1;
 % outer iteration loop
@@ -140,7 +140,9 @@ while (iter <= MAX_ITER && (SMAX > SMAXneeded || SAVG > SAVGneeded))
     end
     
     velcorr(); % Correct pressure and velocity
-
+    % --- PIN OUTLET PRESSURE TO 0 PA ---
+    p_outlet_avg = mean(p(NPI+1, J_fluid_bottom:J_fluid_top));
+    p = p - p_outlet_avg;
     Tcoeff(); %call Tcoeffe.m function to calculate the coefficients for T function
     for iter_T = 1:T_ITER
         T = solve(T, b, aE, aW, aN, aS, aP); %solve T function
@@ -289,7 +291,3 @@ xlabel('x [m]')
 ylabel('y [m]')
 title('Velocity Magnitude [m/s]')
 set(gca, 'YDir', 'normal')
-
-
-
-
