@@ -8,7 +8,9 @@ global x x_u y y_v u v pc p T rho mu Gamma Cp b SP Su d_u d_v omega SMAX SAVG ..
     m_in m_out relax_u relax_v relax_pc relax_T relax_rho aP aE aW aN aS F_u F_v ...
     k eps uplus yplus yplus1 yplus2 tw ...
     u_old v_old pc_old Ti T_old k_old eps_old Cmu mut mueff relax_k relax_eps
-    
+
+% --- DECLARE GEOMETRY GLOBALS ---
+global h_base_frac l_base_frac J_fluid_bottom J_fluid_top
 
 % begin: memalloc()=======================================================
 % allocate memory for variables
@@ -99,6 +101,10 @@ for j = 3:NPJ+2
 end
 % end of grid setting======================================================
 
+% Precalculate global wall limits
+J_fluid_bottom = ceil(h_base_frac*(NPJ+1));   % first fluid J (bottom)
+J_fluid_top    = ceil((1-h_base_frac)*(NPJ+1)); % last  fluid J (top)
+
 % begin: init()===========================================================
 % Initialising all other variables
 omega = 1.0; % Over-relaxation factor for SOR solver
@@ -155,13 +161,12 @@ u(NPI+1,2:NPJ+1) = 0.5*U_IN;
 % would be zero at first iteration=>m_in/m_out =INF
 
 % Setting the relaxation parameters
-relax_u   = 0.3;            % See eq. 6.36
+relax_u   = 0.25;            % See eq. 6.36
 relax_v   = relax_u;        % See eq. 6.37
-relax_pc  = 0.2;  % See eq. 6.33
+relax_pc  = 0.15;  % See eq. 6.33
 relax_T   = 1.0;            % Relaxation factor for temperature
 relax_rho = 0.0;            % Relaxation factor for density
 relax_k = 0.3;
 relax_eps = 0.3;
 % end of initilization=====================================================
 end
-
