@@ -10,21 +10,16 @@ function [] = viscosity()
 global NPI NPJ Cmu SMALL
 % variables
 global rho k eps mu mut mueff Gamma Cp
-global h_base_frac l_base_frac
- 
-h_base_frac = 2/10;
-l_base_frac = 3/10;
 
+% --- CONNECT TO GEOMETRY GLOBALS ---
+global cooler_layout
+ 
 Istart = 1;
 Iend = NPI+2;  
 Jstart = 1;
 Jend = NPJ+2; 
 
 Pr_t = 0.9;   % turbulent Prandtl number for water at ~20 deg C
-
-layout_wall = Walls(Istart, Iend, Jstart, Jend, NPI, NPJ, h_base_frac);
-layout_fins = TriangleFin(Istart, Iend, Jstart, Jend, NPI, NPJ, l_base_frac, h_base_frac);
-cooler_layout = layout_wall | layout_fins;
 
 for I = Istart:Iend 
     for J = Jstart:Jend 
