@@ -6,7 +6,9 @@ global NPI NPJ Cmu LARGE SMALL sigmaeps kappa C1eps C2eps
 % variables
 global x x_u y y_v SP Su F_u F_v mut rho Istart Iend ...
     Jstart Jend b aE aW aN aS aP k eps eps_old E2 mu
-global h_base_frac l_base_frac
+
+% --- CONNECT TO GEOMETRY GLOBALS ---
+global cooler_layout J_fluid_bottom J_fluid_top
 
 Istart = 2;
 Iend   = NPI+1;
@@ -15,23 +17,6 @@ Jend   = NPJ+1;
 
 convect();
 viscosity();
-
-layout_wall = Walls(Istart, Iend, Jstart, Jend, NPI, NPJ, h_base_frac);
-layout_fins = TriangleFin(Istart, Iend, Jstart, Jend, NPI, NPJ, l_base_frac, h_base_frac);
-cooler_layout = layout_wall | layout_fins;
-
-%Find interfaces 
-di = diff(cooler_layout,1,1);
-dj = diff(cooler_layout,1,2);
-solid_above = (di == -1);
-solid_below = (di == 1);
-solid_left  = (dj == -1);
-solid_right = (dj == 1);
-
-interfaces = false(size(cooler_layout));
-interfaces(1:end-1,:) = (di ~= 0);
-interfaces(:,1:end-1) = interfaces(:,1:end-1) | (dj ~= 0);
-
 
 % Effective turbulent diffusivity for eps (includes molecular viscosity)
 Gamma_eps = mu + mut / sigmaeps;
@@ -51,9 +36,7 @@ for I = Istart:Iend
         Fs = F_v(I,j)*AREAs;
         Fn = F_v(I,j+1)*AREAn;
 
-          if (cooler_layout(i,j) == 1)
-            is_solid = true;
-          end
+        is_solid = (cooler_layout(i,j) == 1);
 
         if is_solid
             % Enforce eps floor in solids (Bypass relaxation)
@@ -68,6 +51,10 @@ for I = Istart:Iend
             b(I,J)  = Su(I,J);
             continue;
         end
+
+        % Check adjacent solid boundaries directly (100% robust)
+        has_solid_below = (cooler_layout(i, j-1) == 1);
+        has_solid_above = (cooler_layout(i, j+1) == 1);
 
         % Transport by diffusion (harmonic mean of Gamma_eps)
         Dw = (Gamma_eps(I-1,J)*Gamma_eps(I,J)) / ...
@@ -85,7 +72,7 @@ for I = Istart:Iend
         isWall  = false;
 
         % ---- Channel bottom wall functions ----
-        if (solid_above(i,j) == true)
+        if (j == J_fluid_bottom)
             y_P      = 0.5 * (y(J_fluid_bottom) - y(J_fluid_bottom - 1)); 
             eps_wall = Cmu^0.75 * k(I,J)^1.5 / (kappa * y_P + SMALL);
             SP(I,J)  = -LARGE;
@@ -94,7 +81,7 @@ for I = Istart:Iend
         end
 
         % ---- Channel top wall functions ----
-        if (solid_below(i,j) == true)
+        if (j == J_fluid_top)
             y_P      = 0.5 * (y(J_fluid_top + 1) - y(J_fluid_top)); 
             eps_wall = Cmu^0.75 * k(I,J)^1.5 / (kappa * y_P + SMALL);
             SP(I,J)  = -LARGE;
@@ -107,15 +94,25 @@ for I = Istart:Iend
 
         aW(I,J) = max([ Fw, Dw + Fw/2, 0.]);
         aE(I,J) = max([-Fe, De - Fe/2, 0.]);
-        aS(I,J) = max([ Fs, Ds + Fs/2, 0.]);
-        aN(I,J) = max([-Fn, Dn - Fn/2, 0.]);
+        
+        if isWall || has_solid_below
+            aS(I,J) = 0.;
+        else
+            aS(I,J) = max([ Fs, Ds + Fs/2, 0.]);
+        end
+
+        if isWall || has_solid_above
+            aN(I,J) = 0.;
+        else
+            aN(I,J) = max([-Fn, Dn - Fn/2, 0.]);
+        end
 
         % Standard coefficient formulation
         aP(I,J) = aW(I,J) + aE(I,J) + aS(I,J) + aN(I,J) + Fe - Fw + Fn - Fs - SP(I,J);
         b(I,J)  = Su(I,J);
         
         % ---- Apply under-relaxation for fluid cells ----
-        global relax_eps % ensure access to global relax_eps
+        global relax_eps
         aP(I,J) = aP(I,J) / relax_eps;
         b(I,J)  = b(I,J) + (1 - relax_eps) * aP(I,J) * eps(I,J);
     end
