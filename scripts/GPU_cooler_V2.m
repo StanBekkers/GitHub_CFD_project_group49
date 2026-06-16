@@ -25,7 +25,7 @@ global h_base_frac l_base_frac cooler_layout J_fluid_bottom J_fluid_top
 
 h_base_frac = 2/10;       % Height fraction of the baseplate walls
 l_base_frac = 3/10;       % Length fraction where baffles reside
-fin_type    = 'elipse'; % Baffle type: Choose 'triangle' or 'rectangular' or 'elipse'
+fin_type    = 'rectangular'; % Baffle type: Choose 'triangle' or 'rectangular' or 'elipse'
 
 heat_zone = struct('x_start', {}, 'x_end', {}, 'q_wall', {}, 'R_copper', {});
     
@@ -67,7 +67,7 @@ t_fluid  = 0.002;        % m - 2mm physical channel fluid thickness (depth in z-
 % --- ONE CENTRAL HEAT ZONE IN THE CORE ---
 % The core spans the area of the central baffle geometries (0.3 * XMAX to 0.7 * XMAX)
 A_core   = ((1 - 2*l_base_frac) * XMAX) * 0.015;     % m² active area
-P_core   = 300;                                  % Total power in Watts (Set to 150W for real thermal load)
+P_core   = 450;                                  % Total power in Watts (Set to 150W for real thermal load)
 
 % Heat flux at copper surface [W/m²]
 q_flux_core  = P_core  / A_core;
@@ -87,7 +87,7 @@ heat_zone(1) = struct('x_start', l_base_frac*XMAX,    'x_end', (1-l_base_frac)*X
 init();  %call initialization function
 
 % --- CREATE RESULTS FOLDER ---
-results_dir = 'results_folder';
+results_dir = 'results_folder_temp';
 if ~exist(results_dir, 'dir')
     mkdir(results_dir);
 end

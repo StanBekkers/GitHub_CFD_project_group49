@@ -22,9 +22,17 @@ global sigmak sigmaeps C1eps C2eps kappa ERough relax_k relax_eps P_core
 global h_base_frac l_base_frac cooler_layout J_fluid_bottom J_fluid_top
 
 % --- DIRECTORY SETUP ---
+fprintf('Current Working Directory: %s\n', pwd);
+
 results_dir = 'results_folder';
 if ~exist(results_dir, 'dir')
-    mkdir(results_dir);
+    [status, msg] = mkdir(results_dir);
+    if ~status
+        % Fallback mechanism: If MATLAB cannot create the folder due to 
+        % permissions, fall back to current directory to prevent a crash.
+        warning('Failed to create directory "%s". Reason: %s.\nFalling back to saving files directly in current folder.', results_dir, msg);
+        results_dir = '.'; 
+    end
 end
 
 % --- PARAMETER SWEEP VARIABLES ---
@@ -79,7 +87,7 @@ l_base_frac = 3/10;      % Length fraction where baffles reside
 
 % Central heat zone calculations
 A_core   = ((1 - 2*l_base_frac) * XMAX) * 0.015;     % m² active area
-P_core   = 300;                                      % Total power in Watts
+P_core   = 450;                                      % Total power in Watts
 q_flux_core  = P_core  / A_core;
 R_core   = t_copper / (k_copper * A_core);
 
@@ -104,8 +112,8 @@ for f_idx = 1:length(fin_types)
         % 1. Re-initialize memory arrays for this specific run
         init(); 
         
-        % Construct filenames & output paths
-        suffix = sprintf('U_%0.2f_fin_%s', U_IN, fin_type);
+        % Construct filenames & output paths (includes wattage)
+        suffix = sprintf('U_%0.2f_W_%g_fin_%s', U_IN, P_core, fin_type);
         
         % 2. Rebuild the physical solid layout
         I_full = 1; Iend_full = NPI+2;
@@ -142,8 +150,8 @@ for f_idx = 1:length(fin_types)
             colorbar
             clim([292 296.5])
             xlabel('x [m]'); ylabel('y [m]')
-            title(sprintf('Baseline Temperature Profile (No Flow, Heat On - %s)', upper(fin_type)))
-            saveas(fig1, fullfile(results_dir, sprintf('Baseline_Temperature_NoFlow_fin_%s.png', fin_type)));
+            title(sprintf('Baseline Temperature Profile (No Flow, %g W - %s)', P_core, upper(fin_type)))
+            saveas(fig1, fullfile(results_dir, sprintf('Baseline_Temperature_NoFlow_W_%g_fin_%s.png', P_core, fin_type)));
             if ~show_live_plots, close(fig1); end
         end
 
@@ -249,7 +257,7 @@ for f_idx = 1:length(fin_types)
         fig2 = figure(2); clf(fig2); set(fig2, 'Visible', fig_state);
         quiver(X, Y, u', v', 1.5);
         xlabel('x [m]'); ylabel('y [m]');
-        title(sprintf('Velocity Vector Profile (U_{IN} = %0.2f m/s, %s)', U_IN, upper(fin_type)));
+        title(sprintf('Velocity Vector Profile (U_{IN} = %0.2f m/s, %g W, %s)', U_IN, P_core, upper(fin_type)));
         saveas(fig2, fullfile(results_dir, sprintf('Velocity_Vectors_%s.png', suffix)));
         if ~show_live_plots, close(fig2); end
 
@@ -259,7 +267,7 @@ for f_idx = 1:length(fin_types)
         set(gca, 'YDir', 'normal')
         colorbar;
         xlabel('x [m]'); ylabel('y [m]');
-        title(sprintf('Temperature [K] (U_{IN} = %0.2f m/s, %s)', U_IN, upper(fin_type)));
+        title(sprintf('Temperature [K] (U_{IN} = %0.2f m/s, %g W, %s)', U_IN, P_core, upper(fin_type)));
         saveas(fig3, fullfile(results_dir, sprintf('Simulated_Temperature_%s.png', suffix)));
         if ~show_live_plots, close(fig3); end
 
@@ -269,7 +277,7 @@ for f_idx = 1:length(fin_types)
         set(gca, 'YDir', 'normal')
         colorbar;
         xlabel('x [m]'); ylabel('y [m]');
-        title(sprintf('Pressure [Pa] (U_{IN} = %0.2f m/s, %s)', U_IN, upper(fin_type)));
+        title(sprintf('Pressure [Pa] (U_{IN} = %0.2f m/s, %g W, %s)', U_IN, P_core, upper(fin_type)));
         saveas(fig4, fullfile(results_dir, sprintf('Pressure_%s.png', suffix)));
         if ~show_live_plots, close(fig4); end
 
@@ -279,7 +287,7 @@ for f_idx = 1:length(fin_types)
         set(gca, 'YDir', 'normal')
         colorbar; colormap(fig5, jet);
         xlabel('x [m]'); ylabel('y [m]')
-        title(sprintf('Turbulent Kinetic Energy k [m^2/s^2] (U_{IN} = %0.2f m/s, %s)', U_IN, upper(fin_type)));
+        title(sprintf('Turbulent Kinetic Energy k [m^2/s^2] (U_{IN} = %0.2f m/s, %g W, %s)', U_IN, P_core, upper(fin_type)));
         saveas(fig5, fullfile(results_dir, sprintf('Turbulent_Kinetic_Energy_%s.png', suffix)));
         if ~show_live_plots, close(fig5); end
 
@@ -289,7 +297,7 @@ for f_idx = 1:length(fin_types)
         set(gca, 'YDir', 'normal')
         colorbar; colormap(fig6, jet);
         xlabel('x [m]'); ylabel('y [m]')
-        title(sprintf('Turbulent Dissipation Rate \\epsilon [m^2/s^3] (U_{IN} = %0.2f m/s, %s)', U_IN, upper(fin_type)));
+        title(sprintf('Turbulent Dissipation Rate \\epsilon [m^2/s^3] (U_{IN} = %0.2f m/s, %g W, %s)', U_IN, P_core, upper(fin_type)));
         saveas(fig6, fullfile(results_dir, sprintf('Turbulent_Dissipation_%s.png', suffix)));
         if ~show_live_plots, close(fig6); end
 
@@ -299,7 +307,7 @@ for f_idx = 1:length(fin_types)
         set(gca, 'YDir', 'normal')
         colorbar; colormap(fig7, hot);
         xlabel('x [m]'); ylabel('y [m]')
-        title(sprintf('Turbulent Viscosity Ratio \\mu_t / \\mu [-] (U_{IN} = %0.2f m/s, %s)', U_IN, upper(fin_type)));
+        title(sprintf('Turbulent Viscosity Ratio \\mu_t / \\mu [-] (U_{IN} = %0.2f m/s, %g W, %s)', U_IN, P_core, upper(fin_type)));
         saveas(fig7, fullfile(results_dir, sprintf('Turbulent_Viscosity_Ratio_%s.png', suffix)));
         if ~show_live_plots, close(fig7); end
 
@@ -312,7 +320,7 @@ for f_idx = 1:length(fin_types)
         yline(300,   'k--', 'Log-law upper limit y^+=300')
         hold off
         xlabel('x [m]'); ylabel('y^+')
-        title(sprintf('Wall y^+ at Bottom Channel Wall (U_{IN} = %0.2f m/s, %s)', U_IN, upper(fin_type)));
+        title(sprintf('Wall y^+ at Bottom Channel Wall (U_{IN} = %0.2f m/s, %g W, %s)', U_IN, P_core, upper(fin_type)));
         legend('y^+', 'Sublayer limit', 'Log-law upper limit')
         grid on
         saveas(fig8, fullfile(results_dir, sprintf('Wall_yplus_%s.png', suffix)));
@@ -333,7 +341,7 @@ for f_idx = 1:length(fin_types)
         contourf(x(1:NPI+1), y(2:NPJ+1), V_mag', 30, 'LineColor', 'none')
         colorbar; colormap(fig9, jet);
         xlabel('x [m]'); ylabel('y [m]')
-        title(sprintf('Velocity Magnitude [m/s] (U_{IN} = %0.2f m/s, %s)', U_IN, upper(fin_type)));
+        title(sprintf('Velocity Magnitude [m/s] (U_{IN} = %0.2f m/s, %g W, %s)', U_IN, P_core, upper(fin_type)));
         set(gca, 'YDir', 'normal')
         saveas(fig9, fullfile(results_dir, sprintf('Velocity_Magnitude_%s.png', suffix)));
         if ~show_live_plots, close(fig9); end
