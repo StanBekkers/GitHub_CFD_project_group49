@@ -25,7 +25,7 @@ global h_base_frac l_base_frac cooler_layout J_fluid_bottom J_fluid_top
 
 h_base_frac = 2/10;       % Height fraction of the baseplate walls
 l_base_frac = 3/10;       % Length fraction where baffles reside
-fin_type    = 'triangle'; % Baffle type: Choose 'triangle' or 'rectangular'
+fin_type    = 'elipse'; % Baffle type: Choose 'triangle' or 'rectangular' or 'elipse'
 
 heat_zone = struct('x_start', {}, 'x_end', {}, 'q_wall', {}, 'R_copper', {});
     
@@ -104,8 +104,10 @@ if strcmp(fin_type, 'triangle')
     layout_fins = TriangleFin(I_full, Iend_full, J_full, Jend_full, NPI, NPJ, l_base_frac, h_base_frac);
 elseif strcmp(fin_type, 'rectangular')
     layout_fins = RectangularFin(I_full, Iend_full, J_full, Jend_full, NPI, NPJ, l_base_frac, h_base_frac);
+elseif strcmp(fin_type, 'elipse')
+    layout_fins = ElipseFin(I_full, Iend_full, J_full, Jend_full, NPI, NPJ, l_base_frac, h_base_frac);
 else
-    error('Invalid fin_type specified. Select either ''triangle'' or ''rectangular''.');
+    error('Invalid fin_type specified. Select either ''triangle'' or ''rectangular'' or ''elipse''.');
 end
 cooler_layout = layout_wall | layout_fins;
 
