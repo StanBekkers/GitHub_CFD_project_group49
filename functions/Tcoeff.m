@@ -1,7 +1,7 @@
 function [] = Tcoeff()
 % Purpose: To calculate the coefficients for the T equation in a 2D Planar (Top-Down) View.
 % constants
-global NPI NPJ YMAX XMAX LARGE SMALL
+global NPI NPJ YMAX XMAX LARGE SMALL t_fluid J_fluid_bottom J_fluid_top
 % variables
 global x x_u y y_v T Gamma SP Su F_u F_v relax_T Istart Iend Jstart Jend ...
 b aE aW aN aS aP Cp l_base_frac P_core
@@ -36,6 +36,23 @@ for I = Istart:Iend
     i = I;
     for J = Jstart:Jend
         j = J;
+        
+        % --- PERFECTLY INSULATED CASING WALL DECOUPLING ---
+        % Force the insulated outer casing cells to remain at the inlet temperature (293.15 K)
+        % This prevents numerical heat creep in steady-state while keeping them adiabatic.
+        if (J < J_fluid_bottom || J > J_fluid_top)
+            SP(I,J) = -LARGE;
+            Su(I,J) = LARGE * 293.15;
+            
+            aW(I,J) = 0.0;
+            aE(I,J) = 0.0;
+            aS(I,J) = 0.0;
+            aN(I,J) = 0.0;
+            aP(I,J) = LARGE;
+            b(I,J)  = Su(I,J);
+            continue;
+        end
+
         % Geometrical parameters: Areas of the cell faces
         AREAw = y_v(j+1) - y_v(j);
         AREAe = AREAw;
@@ -65,7 +82,9 @@ for I = Istart:Iend
         % If the cell center lies inside the GPU chip's 2D plan footprint
         if (x(I) >= x_start && x(I) <= x_end && y(J) >= y_start && y(J) <= y_end)
             % Heat rate entering this specific cell from below (Watts)
-            Q_cell = q_flux_core * Area_cell;
+            % Corrected: Divided by the physical depth of the channel (t_fluid) 
+            % to scale the 2D heat source relative to the 2D mass flow rate.
+            Q_cell = (q_flux_core / t_fluid) * Area_cell;
             
             % Add to source term, normalized by Cp to match the equations
             Su(I,J) = Q_cell / Cp(I,J);

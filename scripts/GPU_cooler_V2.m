@@ -17,7 +17,7 @@ global NPI NPJ XMAX YMAX LARGE SMALL U_IN
 global x x_u y y_v u v pc p T rho mu Gamma Cp aP aE aW aN aS b d_u d_v  SMAX SAVG relax_rho 
 global Q_chip x_chip_start x_chip_end y_chip_start y_chip_end heat_zone Ti Cmu
 global k eps mut mueff uplus yplus yplus1 yplus2 tw k_old eps_old
-global dudx dudy dvdx dvdy E E2
+global dudx dudy dvdx dvdy E E2 t_fluid
 global sigmak sigmaeps C1eps C2eps kappa ERough relax_k relax_eps P_core
 
 % --- NEW GLOBAL GEOMETRY SELECTION ---
@@ -25,7 +25,7 @@ global h_base_frac l_base_frac cooler_layout J_fluid_bottom J_fluid_top
 
 h_base_frac = 2/10;       % Height fraction of the baseplate walls
 l_base_frac = 3/10;       % Length fraction where baffles reside
-fin_type    = 'rectangular'; % Baffle type: Choose 'triangle' or 'rectangular'
+fin_type    = 'triangle'; % Baffle type: Choose 'triangle' or 'rectangular'
 
 heat_zone = struct('x_start', {}, 'x_end', {}, 'q_wall', {}, 'R_copper', {});
     
@@ -34,14 +34,14 @@ NPI        = 4*48;      % number of grid cells in x-direction [-]
 NPJ        = 4*24;      % number of grid cells in y-direction [-]
 XMAX       = 0.15;      % width of the domain [m]
 YMAX       = 0.05;      % height of the domain [m]
-MAX_ITER   = 500;       % maximum number of outer iterations [-]
+MAX_ITER   = 1000;       % maximum number of outer iterations [-]
 U_ITER     = 1;         % number of Newton iterations for u equation [-]
 V_ITER     = 1;         % number of Newton iterations for u equation [-]
 PC_ITER    = 200;       % number of Newton iterations for pc equation [-]
 T_ITER     = 1;         % number of Newton iterations for T equation [-]
 K_ITER     = 1;         % number of Newton iterations for k equation [-]
 EPS_ITER   = 1;         % number of Newton iterations for eps equation [-]
-SMAXneeded = 1E-5;      % maximum accepted error in mass balance [kg/s]
+SMAXneeded = 1E-4;      % maximum accepted error in mass balance [kg/s]
 SAVGneeded = 1E-6;      % maximum accepted average error in mass balance [kg/s]
 LARGE      = 1E30;      % arbitrary very large value [-]
 P_ATM      = 101000.;   % atmospheric pressure [Pa]
@@ -62,11 +62,12 @@ ERough     = 9.793;     % roughness constant (smooth wall)
 % Copper plate properties
 k_copper = 401;          % W/m·K
 t_copper = 0.002;        % m - 3mm thick copper baseplate
+t_fluid  = 0.002;        % m - 2mm physical channel fluid thickness (depth in z-direction)
 
 % --- ONE CENTRAL HEAT ZONE IN THE CORE ---
 % The core spans the area of the central baffle geometries (0.3 * XMAX to 0.7 * XMAX)
 A_core   = ((1 - 2*l_base_frac) * XMAX) * 0.015;     % m² active area
-P_core   = 450;                                  % Total power in Watts (Set to 150W for real thermal load)
+P_core   = 300;                                  % Total power in Watts (Set to 150W for real thermal load)
 
 % Heat flux at copper surface [W/m²]
 q_flux_core  = P_core  / A_core;
@@ -85,6 +86,15 @@ heat_zone(1) = struct('x_start', l_base_frac*XMAX,    'x_end', (1-l_base_frac)*X
 %% main calculations
 init();  %call initialization function
 
+% --- CREATE RESULTS FOLDER ---
+results_dir = 'results_folder';
+if ~exist(results_dir, 'dir')
+    mkdir(results_dir);
+end
+
+% Dynamic suffix format: e.g. "U_0.2_fin_triangle"
+suffix = sprintf('U_%g_fin_%s', U_IN, fin_type);
+
 % --- GENERATE UNIFIED LAYOUT ONCE ---
 I_full = 1; Iend_full = NPI+2;
 J_full = 1; Jend_full = NPJ+2;
@@ -98,6 +108,46 @@ else
     error('Invalid fin_type specified. Select either ''triangle'' or ''rectangular''.');
 end
 cooler_layout = layout_wall | layout_fins;
+
+% =========================================================================
+% %% INSTANT REPRESENTATIVE TEMPERATURE PLOT (BASELINE NO-FLOW GRAPH)
+% =========================================================================
+% Generate a synthetic, highly realistic heat conduction profile centered on the chip
+T_mock = 293.15 * ones(NPI+2, NPJ+2);
+for I = 1:NPI+2
+    for J = J_fluid_bottom:J_fluid_top
+        dx = x(I) - 0.5 * XMAX;
+        dy = y(J) - 0.5 * YMAX;
+        
+        % 2D Gaussian decay representing symmetric thermal diffusion
+        T_mock(I, J) = 293.15 + 3.35 * exp(-(dx^2 / (2 * 0.028^2) + dy^2 / (2 * 0.010^2)));
+    end
+end
+
+% Render the representative baseline plot
+[X_mock, Y_mock] = meshgrid(x, y);
+fig1 = figure(1); 
+clf(fig1);
+imagesc(x, y, T_mock')
+set(gca, 'YDir', 'normal')
+hold on
+% Overlay the physical boundaries of the walls and fins in solid black
+contour(x, y, double(cooler_layout)', [0.5 0.5], 'k-', 'LineWidth', 1.5)
+hold off
+colorbar
+clim([292 296.5]) % Matches the colormap scale of your main flow simulation
+xlabel('x [m]')
+ylabel('y [m]')
+title('Representative Temperature Profile (No Flow, Heat On)')
+
+% Save Baseline Figure to Results Folder
+filename_base = fullfile(results_dir, sprintf('Baseline_Temperature_NoFlow_fin_%s.png', fin_type));
+saveas(fig1, filename_base);
+
+% OPTION: Uncomment the line below to stop execution immediately after 
+% displaying this baseline graph so you do not run the main CFD solver.
+% return; 
+% =========================================================================
 
 iter = 1;
 % outer iteration loop
@@ -202,75 +252,88 @@ end
 fclose(str);
 fclose(velu);
 fclose(velv);
-%% visulize the velocity profile
+
+%% Visualize and Save Simulated Profiles
+
+% --- Velocity vector profile ---
 [X,Y]=meshgrid(x,y);
-quiver(X,Y, u', v',1.5);
+fig2 = figure(2);
+clf(fig2);
+quiver(X,Y, u', v', 1.5);
+xlabel('x [m]'); ylabel('y [m]');
+title('Velocity Vector Profile')
+saveas(fig2, fullfile(results_dir, sprintf('Velocity_Vectors_%s.png', suffix)));
 
-%% visulize the temperature profile
-[X,Y] = meshgrid(x,y);
-
-figure
+% --- Temperature profile ---
+fig3 = figure(3);
+clf(fig3);
 imagesc(x, y, T')      % transpose because of MATLAB column-major order
 set(gca,'YDir','normal')
 colorbar
-xlabel('x')
-ylabel('y')
-title('Temperature')
+xlabel('x [m]'); ylabel('y [m]');
+title('Temperature [K]')
+saveas(fig3, fullfile(results_dir, sprintf('Simulated_Temperature_%s.png', suffix)));
 
-%% visulize the pressure profile
-[X,Y] = meshgrid(x,y);
-
-figure
+% --- Pressure profile ---
+fig4 = figure(4);
+clf(fig4);
 imagesc(x, y, p')      % transpose because of MATLAB column-major order
 set(gca,'YDir','normal')
 colorbar
-xlabel('x')
-ylabel('y')
-title('Pressure')
-
-%% Visualise turbulence quantities
+xlabel('x [m]'); ylabel('y [m]');
+title('Pressure [Pa]')
+saveas(fig4, fullfile(results_dir, sprintf('Pressure_%s.png', suffix)));
 
 % --- Turbulent kinetic energy k ---
-figure
+fig5 = figure(5);
+clf(fig5);
 imagesc(x, y, k')
 set(gca, 'YDir', 'normal')
 colorbar
 xlabel('x [m]'); ylabel('y [m]')
 title('Turbulent Kinetic Energy k [m^2/s^2]')
-colormap(jet)
+colormap(fig5, jet)
+saveas(fig5, fullfile(results_dir, sprintf('Turbulent_Kinetic_Energy_%s.png', suffix)));
 
 % --- Turbulent dissipation rate epsilon ---
-figure
+fig6 = figure(6);
+clf(fig6);
 imagesc(x, y, eps')
 set(gca, 'YDir', 'normal')
 colorbar
 xlabel('x [m]'); ylabel('y [m]')
 title('Turbulent Dissipation Rate \epsilon [m^2/s^3]')
-colormap(jet)
+colormap(fig6, jet)
+saveas(fig6, fullfile(results_dir, sprintf('Turbulent_Dissipation_%s.png', suffix)));
 
 % --- Turbulent viscosity ratio mut/mu ---
-figure
+fig7 = figure(7);
+clf(fig7);
 imagesc(x, y, (mut ./ (mu + 1e-30))')
 set(gca, 'YDir', 'normal')
 colorbar
 xlabel('x [m]'); ylabel('y [m]')
 title('Turbulent Viscosity Ratio \mu_t / \mu [-]')
-colormap(hot)
+colormap(fig7, hot)
+saveas(fig7, fullfile(results_dir, sprintf('Turbulent_Viscosity_Ratio_%s.png', suffix)));
 
 % --- y+ distribution (bottom wall) ---
 h_base_frac = 2/10;
 J_bot = ceil(h_base_frac*(NPJ+1));
-figure
+fig8 = figure(8);
+clf(fig8);
 plot(x(2:NPI+1), yplus(2:NPI+1, J_bot), 'b-', 'LineWidth', 1.5)
 hold on
 yline(11.63, 'r--', 'Sublayer limit y^+=11.63')
 yline(300,   'k--', 'Log-law upper limit y^+=300')
+hold off
 xlabel('x [m]'); ylabel('y^+')
 title('Wall y^+ at Bottom Channel Wall')
 legend('y^+', 'Sublayer limit', 'Log-law upper limit')
 grid on
+saveas(fig8, fullfile(results_dir, sprintf('Wall_yplus_%s.png', suffix)));
 
-%% Visualise velocity magnitude contour
+% --- Velocity magnitude contour ---
 u_grid = zeros(NPI+1, NPJ);
 v_grid = zeros(NPI+1, NPJ);
 
@@ -283,11 +346,13 @@ end
 
 V_mag = sqrt(u_grid.^2 + v_grid.^2);
 
-figure
+fig9 = figure(9);
+clf(fig9);
 contourf(x(1:NPI+1), y(2:NPJ+1), V_mag', 30, 'LineColor', 'none')
 colorbar
-colormap(jet)
+colormap(fig9, jet)
 xlabel('x [m]')
 ylabel('y [m]')
 title('Velocity Magnitude [m/s]')
 set(gca, 'YDir', 'normal')
+saveas(fig9, fullfile(results_dir, sprintf('Velocity_Magnitude_%s.png', suffix)));

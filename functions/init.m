@@ -167,6 +167,6 @@ relax_pc  = 0.15;  % See eq. 6.33
 relax_T   = 1.0;            % Relaxation factor for temperature
 relax_rho = 0.0;            % Relaxation factor for density
 relax_k = 0.3;
-relax_eps = 0.3;
+relax_eps = 0.5;
 % end of initilization=====================================================
 end

@@ -12,7 +12,7 @@ global NPI NPJ Cmu SMALL
 global rho k eps mu mut mueff Gamma Cp
 
 % --- CONNECT TO GEOMETRY GLOBALS ---
-global cooler_layout
+global cooler_layout J_fluid_bottom J_fluid_top
  
 Istart = 1;
 Iend = NPI+2;  
@@ -42,7 +42,13 @@ for I = Istart:Iend
         
         % 3. Apply Gamma according to physical zone
         if is_solid
-            Gamma(I,J) = 401.0 / Cp(I,J); % Solid copper
+            % Check if this solid cell lies in the outer casing walls 
+            % (below the bottom channel wall or above the top channel wall)
+            if (J < J_fluid_bottom || J > J_fluid_top)
+                Gamma(I,J) = 1e-10 / Cp(I,J); % Completely insulated outer walls (near-zero conductivity)
+            else
+                Gamma(I,J) = 401.0 / Cp(I,J);  % Internal fins remain solid copper
+            end
         else
             Gamma(I,J) = 0.6 / Cp(I,J) + mut(I,J) / Pr_t; % Fluid water + turbulent diffusivity
         end

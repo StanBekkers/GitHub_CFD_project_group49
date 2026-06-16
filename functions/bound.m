@@ -19,22 +19,14 @@ T(1, J_fluid_top+1:NPJ+2) = 293.15;
 u(2, J_fluid_bottom:J_fluid_top) = U_IN;
 
 % --- Physical Boundary Node Temperature Updates ---
-k_copper = 401.0;
-h_air = 15.0;
-T_air = 293.15;
-Dy = YMAX / NPJ;
-dy_half = 0.5 * Dy;
-
+% Replacing convective loss with a zero-flux (adiabatic) condition 
+% to make the outer boundaries completely insulated.
 for I = 1:NPI+2
-    % --- TOP-DOWN VIEW MODIFICATION ---
-    % Both outer casing walls (J = 1 at y = 0, and J = NPJ + 2 at y = YMAX)
-    % are now simply exposed to ambient air.
+    % 1. Bottom casing wall surface node (J = 1) gets the temperature of J = 2
+    T(I, 1) = T(I, 2);
     
-    % 1. Bottom casing wall surface node
-    T(I, 1) = (T(I, 2) * (k_copper / dy_half) + h_air * T_air) / ((k_copper / dy_half) + h_air);
-    
-    % 2. Top casing wall surface node
-    T(I, NPJ+2) = (T(I, NPJ+1) * (k_copper / dy_half) + h_air * T_air) / ((k_copper / dy_half) + h_air);
+    % 2. Top casing wall surface node (J = NPJ+2) gets the temperature of J = NPJ+1
+    T(I, NPJ+2) = T(I, NPJ+1);
 end
 
 % --- CORRECTED TURBULENT LENGTH SCALE TYPO ---
