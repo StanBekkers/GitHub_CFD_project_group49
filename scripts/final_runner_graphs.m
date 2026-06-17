@@ -36,7 +36,9 @@ if ~exist(results_dir, 'dir')
 end
 
 % --- PARAMETER SWEEP VARIABLES ---
-fin_types = {'triangle', 'rectangular', 'elipse'};
+% Added 'nofins' to establish a clear heat and flow baseline
+%fin_types = {'triangle', 'rectangular', 'elipse', 'nofins'};
+fin_types = {"nofins"};
 velocities = [0.05, 0.20, 0.50]; % Decided velocities: Low, Nominal, High
 
 % Set to false to run the automated sweep in the background and save to disk
@@ -126,6 +128,11 @@ for f_idx = 1:length(fin_types)
             layout_fins = RectangularFin(I_full, Iend_full, J_full, Jend_full, NPI, NPJ, l_base_frac, h_base_frac);
         elseif strcmp(fin_type, 'elipse')
             layout_fins = ElipseFin(I_full, Iend_full, J_full, Jend_full, NPI, NPJ, l_base_frac, h_base_frac);
+        elseif strcmp(fin_type, 'nofins')
+            % Flat, straight channel baseline with no internal solid geometry
+            layout_fins = zeros(Iend_full, Jend_full);
+        else
+            error('Invalid fin_type specified. Select either ''triangle'', ''rectangular'', ''elipse'', or ''nofins''.');
         end
         cooler_layout = layout_wall | layout_fins;
 
